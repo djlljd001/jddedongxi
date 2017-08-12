@@ -1,170 +1,300 @@
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
-#Author:	Jinglong Du
-#email:		jid020@ucsd.edu
-
-
+# Author:    Jinglong Du
+# email:        jid020@ucsd.edu
 # if need gpu, then do this:
-#from numba import *
+# from numba import *
+
 import numpy as np
+from numba import vectorize, float32, jit
+import time
+import io
+
+
+
+
+def importUserData(UserNameID):
+    try:
+        ret = []
+        filename = u"UserData/" + UserNameID
+        files = io.open(filename, "r" ,encoding='utf8')
+        userData = files.read().splitlines()
+        # split data here once to optimize program later
+        for line in userData:
+            splited = line.split("\t")
+            ret.append(splited)
+        files.close()
+        return ret
+    except Exception, e:
+        print "DATA WARNING:    Failed in Finding/Reading in Query name list."
+        return None
+
+def importWLData(UserNameID):
+    try:
+        ret = {}
+        filename = u"UserFollow/" + UserNameID
+        files = io.open(filename, "r" ,encoding='utf8')
+        userData = files.read().splitlines()
+        # split data here once to optimize program later
+        for line in userData:
+            splited = line.split("\t")
+            ret[splited[1]] = 1
+        files.close()
+        return ret
+    except Exception, e:
+        # print "DATA WARNING:    Failed in Finding/Reading in", UserNameID, " wishlist product list."
+        return None
+
+def importShoppingData(UserNameID):
+    try:
+        ret = {}
+        filename = u"UserAddToCart/" + UserNameID
+        files = io.open(filename, "r" ,encoding='utf8')
+        userData = files.read().splitlines()
+        # split data here once to optimize program later
+        for line in userData:
+            splited = line.split("\t")
+            ret[splited[1]] = 1
+        files.close()
+        return ret
+    except Exception, e:
+        # print "DATA WARNING:    Failed in Finding/Reading in", UserNameID, " shopping cart product list."
+        return None
+
+
+
+def getClickDict(userData):
+    # ( str(product sku), int ClickDict time)
+    ClickDict = {}
+    # for line in userData:
+    #     splited = line.split("\t")
+    for splited in userData:
+        # save click data
+        if ClickDict.has_key(splited[3]):
+            ClickDict[splited[3]] += int(splited[6])
+        else:
+            ClickDict[splited[3]] = int(splited[6])
+    return ClickDict
+
+
+def getPurchaseDict(userData):
+    # ( str(product sku), int purchase time)
+    PurchaseDict = {}
+    # for line in userData:
+    #     splited = line.split("\t")
+    for splited in userData:
+        # save purchase data
+        if PurchaseDict.has_key(splited[3]):
+            PurchaseDict[splited[3]] += int(splited[7])
+        else:
+            PurchaseDict[splited[3]] = int(splited[7])
+    return PurchaseDict
+
+
+def FormatQuery(userData):
+    # (query/keyword, boolean): chech which query is useful
+    UsefulQuery = {}
+    NewQuery = {}
+    # for line in userData:
+    # splited = line.split("\t")
+    for splited in userData:
+        #save Useful query data
+        if splited[6] == "1" or splited[7] == "1":
+            UsefulQuery[splited[0]] = True
+
+    # save useful query's product list.
+    # for line in userData:
+    # splited = line.split("\t")
+    for splited in userData:
+        # if it is useful query
+        if UsefulQuery.has_key(splited[0]):
+            # if already have this query
+            if NewQuery.has_key(splited[0]):
+                #if that query does not contains that product
+                if int(splited[3]) not in NewQuery[splited[0]]:
+                    #if that query's position is out of range.
+                    if int(splited[4]) >= len(NewQuery[splited[0]]):
+                        # append to the end of the products list
+                        NewQuery[splited[0]].append(int(splited[3]))
+                    # if it is not out of range, i.e. it is the new added product for that query
+                    else:
+                        # insert that products to the corresponding position into list that is newly shown
+                        # in the up-to-date query.
+                        NewQuery[splited[0]].insert( int(splited[4])-1  , int(splited[3]))
+            # if not have that query yet. Create new list for that query.
+            else:
+                NewQuery[splited[0]] = [int(splited[3])]
+    return NewQuery
+
 
 
 #decay rate function based on N_SA(s, a) value, let's first assume it is 1,
 #which means no decay for any N_SA value.
 def Decay (DecayRate, N_SAValue):
-	return 1
+    return 1
 
 
 #The N_SA[s1s,a] function. No data yet, so set to default 1.
 def N_sa(s1s, a):
-	return 1
+    return 1
 
 
 #The main function that will return the reward R[s'] for Step 2 State
 #There is no data yet, so set to 0 first.
-def R_S(keyword, lens):
-	prodRZName = "Query/" + keyword + ".QLR"
-	try:
-		files = open(prodRZName, "r")
-		prodRZ = np.array(files.read().splitlines(), dtype=np.float32)
-		files.close()
-	except Exception, e:
-		print "DATA WARNING:	Failed in Finding/Reading in product Reward AT 33"
 
-	if prodRZ.size > 0:
-		return prodRZ
-	else:
-		print "WARNING:	No product reward data AT 38"
-		return np.array([0]*lens, dtype=np.float32)
+# U = R_S( QueryList)
+def R_S(QueryList):
+    prodRZName = "QueryListReward.QLR"
+    prodRZ = []
+    try:
+        files = open(prodRZName, "r")
+        # prodRZ = np.array(files.read().splitlines(), dtype=np.float32)
+        prodRZ = files.read().splitlines()
+        files.close()
+    except Exception, e:
+        pass
+        # print "DATA WARNING:    Failed in Finding/Reading in product Reward AT 33"
+
+    prodRZ = [int(x) for x in prodRZ]
+    prodRZ = np.array(prodRZ, dtype=np.float32)
+    if prodRZ.size > 0:
+        return prodRZ
+    else:
+        # print "WARNING:    No product reward data AT 38"
+        return np.array([0]*len(QueryList), dtype=np.float32)
 
 
-#this part will generate the initial value for Q. 
+#this part will generate the initial value for Q.
 def initQ(s1s, a, rank):
-	return 0
+    return 0
+
+#X = purchaseModel(QueryList, PurchaseDict)
+def purchaseModel(QueryList, PurchaseDict):
+    purchR = []
+    #
+    for each in QueryList:
+        if PurchaseDict.has_key(str(each)):
+            purchR.append(PurchaseDict[str(each)])
+        else:
+            purchR .append(0)
+
+    reward = [0]*len(QueryList)
+    for x in xrange(len(QueryList)):
+        if purchR[x] < 2:
+            reward[x] = 0
+        elif purchR[x] < 3:
+            reward[x] = 1
+        elif purchR[x] < 5:
+            reward[x] = 3
+        elif purchR[x] < 20:
+            reward[x] = 8
+        else:
+            reward[x] = 20
+    return np.array(reward, dtype=np.float32)
+
+# Y = clickModel(QueryList, ClickDict)
+def clickModel(QueryList, ClickDict):
+    clkR = []
+    for each in QueryList:
+        if ClickDict.has_key(str(each)):
+            clkR.append(ClickDict[str(each)])
+        else:
+            clkR .append(0)
+    minClick = min(clkR)
+    newClick = [0]*len(clkR)
+    newClick[:] = [x - minClick for x in clkR]
+    maxClick = max(newClick)
+    reward = [0]*len(clkR)
+    for x in xrange(len(clkR)):
+        if clkR[x] <= 0:
+            reward[x] = 0
+        elif clkR[x] <= maxClick/16:
+            reward[x] = 1
+        elif clkR[x] <= maxClick/8:
+            reward[x] = 1.5
+        elif clkR[x] <= maxClick/4:
+            reward[x] = 2
+        elif clkR[x] <= maxClick/2:
+            reward[x] = 3
+        elif clkR[x] <= maxClick*3/4:
+            reward[x] = 4
+        else:
+            reward[x] = 5
+    return np.array(reward, dtype=np.float32)
 
 
-def purchaseModel(UserID, keyword, lens):
-	purchR = None
-	purchRName = "Data/purchase/" + str(UserID) + "&" + keyword + ".Hisdat"
-	print "purchase address:       " , purchRName
-	try:
-		files = open(purchRName, "r")
-		purchR = files.read().splitlines()
-		files.close()
-	except Exception, e:
-		print "DATA WARNING:	Failed in Finding/Reading in purchase Reward. AT 58"
 
-	if purchR != None:
-		purchR = [int(x) for x in purchR]
-		print "purchase data:          " , purchR
-	else:
-		print "WARNING:	No purchase reward. AT 64"
-		purchR = [0]*lens
+def wishListModel(QueryList, WishListDict):
+    wiLiR = []
+    reward = [0] * len(QueryList)
+    if WishListDict != None:
+        for each in QueryList:
+            if WishListDict.has_key(str(each)):
+                wiLiR.append(WishListDict[str(each)])
+            else:
+                wiLiR.append(0)
+        for x in xrange(len(wiLiR)):
+            if wiLiR[x] <= 0:
+                reward[x] = 0
+            elif wiLiR[x] <= 1:
+                reward[x] = 2
+            elif wiLiR[x] <= 2:
+                reward[x] = 4
+            elif wiLiR[x] <= 4:
+                reward[x] = 5
+            else:
+                reward[x] = 6
+    return np.array(reward, dtype=np.float32)
 
-	reward = [0]*len(purchR)
-	for x in xrange(len(purchR)):
-		if purchR[x] < 1:
-			reward[x] = 0
-		elif purchR[x] < 2:
-			reward[x] = -1
-		elif purchR[x] < 5:
-			reward[x] = 3
-		elif purchR[x] < 20:
-			reward[x] = 8
-		else:
-			reward[x] = 20
-	return np.array(reward, dtype=np.float32)
-
-
-def clickModel(UserID, keyword, lens):
-
-	clkR = None
-	clkRName = "Data/click/" + str(UserID) + "&" + keyword + ".Hisdat"
-	print "click address:          " , clkRName
-	try:
-		files = open(clkRName, "r")
-		clkR = files.read().splitlines()
-		files.close()
-	except Exception, e:
-		print "DATA WARNING:	Failed in Finding/Reading in click Reward. AT 93"
-
-	if clkR != None:
-		clkR = [int(x) for x in clkR]
-		print "click data:             ",  clkR
-	else:
-		print "WARNING:	No click reward. AT 99"
-		clkR = [0]*lens
-
-	minClick = min(clkR)
-	newClick = [0]*len(clkR)
-	newClick[:] = [x - minClick for x in clkR]
-	maxClick = max(newClick)
-	reward = [0]*len(clkR)
-	for x in xrange(len(clkR)):
-		if clkR[x] <= 0:
-			reward[x] = 0
-		elif clkR[x] <= maxClick/16:
-			reward[x] = 1
-		elif clkR[x] <= maxClick/8:
-			reward[x] = 1.5
-		elif clkR[x] <= maxClick/4:
-			reward[x] = 2
-		elif clkR[x] <= maxClick/2:
-			reward[x] = 3
-		elif clkR[x] <= maxClick:
-			reward[x] = 4
-		else:
-			reward[x] = 5
-	return np.array(reward, dtype=np.float32)
-
-
-def wishListModel(UserID, keyword, lens):
-
-	wiLiR = None
-	wiLiRName = "Data/Cart&WishList/" + str(UserID) + "&" + keyword + ".Hisdat"
-	print "Wishlist & Cart address:" , wiLiRName
-	try:
-		files = open(wiLiRName, "r")
-		wiLiR = files.read().splitlines()
-		files.close()
-	except Exception, e:
-		print "DATA WARNING:	Failed in Finding/Reading in wishList Reward. AT 133"
-
-	if wiLiR != None:
-		wiLiR = [int(x) for x in wiLiR]
-		print "Wishlist & Cart data:   ",  wiLiR
-	else:
-		print "WARNING:	No wishList reward. AT 139"
-		wiLiR = [None]*lens
-
-	reward = [0]*len(wiLiR)
-	for x in xrange(len(wiLiR)):
-		if wiLiR[x] <= 0:
-			reward[x] = 0
-		elif wiLiR[x] <= 1:
-			reward[x] = 3
-		elif wiLiR[x] <= 2:
-			reward[x] = 4
-		elif wiLiR[x] <= 4:
-			reward[x] = 5
-		else:
-			reward[x] = 6
-	return np.array(reward, dtype=np.float32)
-
+def ShoppingCartModel(QueryList, ShoppingCartDict):
+    ShpCartR = []
+    reward = [0] * len(QueryList)
+    if ShoppingCartDict != None:
+        for each in QueryList:
+            if ShoppingCartDict.has_key(str(each)):
+                ShpCartR.append(ShoppingCartDict[str(each)])
+            else:
+                ShpCartR.append(0)
+        for x in xrange(len(ShpCartR)):
+            if ShpCartR[x] <= 0:
+                reward[x] = 0
+            elif ShpCartR[x] <= 1:
+                reward[x] = 2
+            elif ShpCartR[x] <= 2:
+                reward[x] = 4
+            elif ShpCartR[x] <= 4:
+                reward[x] = 5
+            else:
+                reward[x] = 6
+    return np.array(reward, dtype=np.float32)
 
 #The R[s1s, a] function, which corresponding to the target customers, key words and products.
 #No data yet, so set to 0 first.
 
 #with GPU, do that:
 #@vectorize(['float32(float32, float32)'], target='cuda')
-def GetReward(UserID, keyword, lens):
-	# with GPU, just do:
-	# return x + y + z + u
-	X = purchaseModel(UserID, keyword, lens)
-	Y = clickModel(UserID, keyword, lens)
-	Z = wishListModel(UserID, keyword, lens)
-	U = R_S(keyword, lens)
-	ret = X + Y + Z + U
-	# ret = [x+y+z+u for x,y,z,u in zip(purchaseModel(UserID, keyword, lens), clickModel(UserID, keyword, lens), wishListModel(UserID, keyword, lens), R_S(keyword, lens))]
-	print "Final reward func: " , ret
-	return ret
+
+
+# RewardValue[each[0]] = GetReward(UserNameID, each[0], each[1])
+def GetReward( QueryList, ClickDict, PurchaseDict , WishListDict, ShoppingCartDict):
+    # X = purchaseModel(QueryList, PurchaseDict)
+    # Y = clickModel(QueryList, ClickDict)
+    # Z = wishListModel(QueryList, WishListDict)
+    # U = R_S( QueryList)
+    # V = ShoppingCartModel(QueryList, ShoppingCartDict)
+    # ret = addTogether(X, Y, U, Z, V)
+    ret = addTogether(purchaseModel(QueryList, PurchaseDict), clickModel(QueryList, ClickDict),
+                      wishListModel(QueryList, WishListDict), R_S( QueryList),
+                      ShoppingCartModel(QueryList, ShoppingCartDict))
+    # print "Final reward func: " , ret
+    return ret
+
+
+# @vectorize(['float32(float32, float32, float32, float32)'], target='cpu')
+# def addTogether(X, Y, Z, U):
+#   return X + Y + Z + U
+# @vectorize()
+@vectorize(['float32(float32, float32, float32, float32, float32)'], target='cpu')
+def addTogether(X, Y, Z, U, V):
+    return X + Y  + Z + U + V
+

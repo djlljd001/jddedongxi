@@ -1,9 +1,17 @@
-Finished (RLtesterV3.2):
-		1.	Implementing the Match-Map feature with no match in default.	Done.
-		2.	Implementing the numpy skeleton for numba.cuda
-			1.	Import numpy and setup environment
-			2.	Convert program from regular array to numpy
-			3.	Test performance and fix bugs
-			4.	Generating 1000 long testing data
-		3.	Problem:
-			The bottleneck is not the cpu calculation for now. In fact, in most case, most of time is wasted in reading and writing data. Parallel calculation will cause longer time to dispatch data for each core and recieve data from them. So "parallel" for now is slower than single core "cpu". Haven't try cuda yet.
+Training.py and testing.py is abandoned from now. keep it there just for reference.
+
+1.	Get the data. Working on handling these data.
+1.	import all data.
+2.	format all data.
+3.	Optimize it to around 50 seconds/(1000 user)/1 thread or 
+	100 seconds /(1000 * 8 user)/8 thread for i7-4700MQ(Haswell 4C8T @ 2.4Ghz ~ 3.4Ghz)
+	to import 6 month data and initialize everything.
+4.	Optimize to 2.5 seconds to do 1 iteration based on data above.
+5.	Working on the iteration.
+6.	Dispatch data for each month in order to train it with Jan 1 ~ May 30, test with June.
+7.	Design model saving plan.
+	(not save for now)
+8.	Design model iteration plan.
+	(test 1 large scale simulating iteration first)
+9.	Design model testing plan.
+	(train it with Jan 1 ~ May 30, test with June)
