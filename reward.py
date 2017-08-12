@@ -8,30 +8,23 @@ from numba import vectorize, float32, jit
 import time
 from datetime import datetime as dt
 import io
-# def Similarity(userid):
-def Similarity(userid, Query, total):
-    # total => [userid: data, userid: data].
-    # total[userid] = data
-    # data[query/keyword] = [ [sku list       ],
-    #                         [Initial Q-value],
-    #                         [Reward List    ]]
-    # return None
 
-    List = []
-    for each in total.items():
-        # each[0] is the userid
-        # each[1] is the data
-        # each[1][query] is the corresponding query return.
-        if each[1].has_key(Query):
-            List.append(each[0])
-    if len(List)<5 and len(List)>0:
-        print "Userid: ", userid , " + Query:" , Query , " => found similar:" ,str(len(List))
-        return total[List[0]]
-    else:
-        print "."
-        return None
+def addDictTogether(DictOne, DictTwo):
+    if DictOne is None:
+        return DictTwo
 
+    if DictTwo is None:
+        return DictOne
 
+    retDict = DictOne
+    for each in DictTwo.items():
+
+        if each[0] in retDict:
+            retDict[each[0]] = each[1] + retDict[each[0]]
+        else:
+            retDict[each[0]] = each[1]
+
+    return retDict
 
 def combineTwoData(newData, existdata):
     # ret = combineTwoData(newData, existdata)
@@ -162,7 +155,7 @@ def importShoppingData(UserNameID, ShoppingCartTrainingPath):
 
 
 def getClickDict(userData):
-    # ( str(product sku), int ClickDict time)
+    # ( str(product sku), int => number of Click time)
     ClickDict = {}
     # for line in userData:
     #     splited = line.split("\t")
@@ -178,7 +171,7 @@ def getClickDict(userData):
 
 
 def getPurchaseDict(userData):
-    # ( str(product sku), int purchase time)
+    # ( str(product sku), int => number of purchase time)
     PurchaseDict = {}
     # for line in userData:
     #     splited = line.split("\t")
@@ -303,7 +296,6 @@ def initQ(s1s, a, rank):
 # X = purchaseModel(QueryList, PurchaseDict)
 def purchaseModel(QueryList, PurchaseDict):
     purchR = []
-    #
     for each in QueryList:
         # if PurchaseDict.has_key(str(each)):
         if str(each) in PurchaseDict:
@@ -335,16 +327,13 @@ def clickModel(QueryList, ClickDict):
             clkR.append(ClickDict[str(each)])
         else:
             clkR .append(0.0)
-    minClick = min(clkR)
-    newClick = [0]*len(clkR)
-    newClick[:] = [x - minClick for x in clkR]
-    maxClick = float(max(newClick))
+    maxClick = float(max(clkR))
     reward = [0]*len(clkR)
     for x in xrange(len(clkR)):
         if clkR[x] <= 0:
             reward[x] = 0
         elif clkR[x] <= maxClick/16:
-            reward[x] = 0.5
+            reward[x] = 0
         elif clkR[x] <= maxClick/8:
             reward[x] = 1
         elif clkR[x] <= maxClick/4:
