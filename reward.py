@@ -291,9 +291,9 @@ def purchaseModel(QueryList, PurchaseDict):
     reward = [0]*len(QueryList)
     for x in xrange(len(QueryList)):
         if purchR[x] <= 1:
-            reward[x] = 0.5
-        elif purchR[x] <= 2:
             reward[x] = 1
+        elif purchR[x] <= 2:
+            reward[x] = 2
         elif purchR[x] <= 4:
             reward[x] = 3
         elif purchR[x] < 20:
@@ -311,27 +311,27 @@ def clickModel(QueryList, ClickDict):
         if str(each) in ClickDict:
             clkR.append(ClickDict[str(each)])
         else:
-            clkR .append(0)
+            clkR .append(0.0)
     minClick = min(clkR)
     newClick = [0]*len(clkR)
     newClick[:] = [x - minClick for x in clkR]
-    maxClick = max(newClick)
+    maxClick = float(max(newClick))
     reward = [0]*len(clkR)
     for x in xrange(len(clkR)):
         if clkR[x] <= 0:
             reward[x] = 0
         elif clkR[x] <= maxClick/16:
-            reward[x] = 0.5
+            reward[x] = 0
         elif clkR[x] <= maxClick/8:
             reward[x] = 1
         elif clkR[x] <= maxClick/4:
             reward[x] = 2
         elif clkR[x] <= maxClick/2:
-            reward[x] = 4
+            reward[x] = 3.7
         elif clkR[x] <= maxClick*3/4:
-            reward[x] = 6
+            reward[x] = 4.5
         else:
-            reward[x] = 8
+            reward[x] = 8.5
     return np.array(reward, dtype=np.float32)
 
 
@@ -373,7 +373,7 @@ def ShoppingCartModel(QueryList, ShoppingCartDict):
             if ShpCartR[x] <= 0:
                 reward[x] = 0
             elif ShpCartR[x] <= 1:
-                reward[x] = 1
+                reward[x] = 1.85
             elif ShpCartR[x] <= 2:
                 reward[x] = 2
             elif ShpCartR[x] <= 4:

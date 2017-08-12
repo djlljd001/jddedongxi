@@ -1,7 +1,5 @@
-RLTesterV4.3
+RLTesterV4.4
 Author:		Jinglong Du
 Email:		jid020@ucsd.edu
 
-Finished accumulating model importing and iteration under control.
-Finished accumulating test result.
-Fix bugs.
+	1.	Finished evaluation function AUC2.

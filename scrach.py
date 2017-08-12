@@ -18,10 +18,12 @@ import time
 import base64
 from datetime import datetime as dt
 import os
+from auc2 import *
 
 wlmiss = 0
 shpmiss = 0
 GAMA = 0.2
+scale = 10
 
 ImprovePosition = 0
 DropDownPosition = 0
@@ -41,7 +43,6 @@ DropDownPositionPercentage = 0.
 #   NewQuery:   [keyword: [int SKU, int SKU...],      keyword:  [int SKU, int SKU...], ... ]
 #   QValue:     [keyword: [float32 Q, float32 Q...],  keyword:  [float32 Q, float32 Q...], ... ]
 #   RewardValue:[keyword: [float32 R, float32 R...],  keyword:  [float32 R, float32 R...], ... ]
-
 
 @vectorize([float32(float32, float32)], target='cpu')
 def CoreFunc(r, q):
@@ -145,7 +146,9 @@ def buildModel(total, path, ShoppingCartTrainingPath, WishlistTrainingPath, Iter
     #
     # shpmiss = 0
     # print "Total customer found:    ", len(total)
-    print("--- Read in data and initialization:    %s seconds ---" % (time.time() - start_time))
+
+    # print("--- Read in data and initialization:    %s seconds ---" % (time.time() - start_time))
+
     # print("--- accumulative %s seconds ---" % accTime)
     # Single thread, 1000 user data. cost 50s.
     # 8 threads, 8000 user data in total, cost 100s.
@@ -154,7 +157,7 @@ def buildModel(total, path, ShoppingCartTrainingPath, WishlistTrainingPath, Iter
     # Then start first Iteration for just one time with GAMA as followed.
     if Iteration:
 
-        print "Start iterations for models."
+        # print "Start iterations for models."
         start_time = time.time()
         for data in total.items():
             for each in data[1].items():
@@ -164,7 +167,7 @@ def buildModel(total, path, ShoppingCartTrainingPath, WishlistTrainingPath, Iter
                 # print total[data[0]][each[0]][1]
                 total[data[0]][each[0]][1] = CoreFunc(each[1][2], each[1][1])
                 # print total[data[0]][each[0]][1]
-        print("--- Last Iteration time: %s seconds ---" % (time.time() - start_time))
+        # print("--- Last Iteration time: %s seconds ---" % (time.time() - start_time))
     return total
 
 
@@ -174,18 +177,19 @@ def getTestData(total, TotalResult, path):
     # path = 'DispatchedData/UserDataJune/'
     TestTotal = {}
     # Import all data into the dictionary total.
-    print "Start importing testing data."
+    # print "Start importing testing data."
     for filename in os.listdir(path):
         ret = formatTestdata(filename, path)
         TestTotal[filename] = ret
 
     global ImprovePosition
     global DropDownPosition
-    global ImprovePositionPercentage
-    global DropDownPositionPercentage
+    # global ImprovePositionPercentage
+    # global DropDownPositionPercentage
     improve = []
     dropdown = []
     noChange = []
+    AUC2 = []
 
     notFound = 0
     totalData = 0
@@ -239,7 +243,7 @@ def getTestData(total, TotalResult, path):
                         # print "Length of the current purchase's Q-list: ", len(SinglePurchase[1])
                         # start form 0, ends at 10, total length is 10.
                         # That Q-value is corresponding to the SinglePurchase's new query.
-                        QValue = np.arange(0, 10, 10.0/len(SinglePurchase[1]), dtype=np.float32)
+                        QValue = np.arange(0, scale, scale*1.0/len(SinglePurchase[1]), dtype=np.float32)
                         QValue = np.flip(QValue, 0)
 
                         # for splited in SinglePurchase[1]:
@@ -271,23 +275,34 @@ def getTestData(total, TotalResult, path):
                         # print "After: ========================"
                         # print QValue
                         newProductPosition = list(QValue).index(TargetQValue)
+
+
                         if newProductPosition < productIDPosition:
                             ImprovePosition += productIDPosition - newProductPosition
-                            ImprovePositionPercentage += float(productIDPosition - newProductPosition)/(productIDPosition + 1)
+                            # ImprovePositionPercentage += float(productIDPosition - newProductPosition)\
+                            #                              /(productIDPosition + 1)
                             improve.append("Improve: " + str(productIDPosition - newProductPosition) +
                                            " || old position: " + str(productIDPosition + 1) +
                                            " || New position :" + str(newProductPosition + 1) +
                                            " || productID: " + str(SinglePurchasedProductID) +
                                            " || Query: " + SinglePurchaseQuery)
+                            # AUC2 = [old position, new position, product ID, Query, Query Length]
+                            AUC2.append([int(productIDPosition + 1),int(newProductPosition + 1),
+                                         str(SinglePurchasedProductID), SinglePurchaseQuery, len(QValue)])
 
                         elif newProductPosition > productIDPosition:
                             DropDownPosition += newProductPosition - productIDPosition
-                            DropDownPositionPercentage += float(newProductPosition - productIDPosition)/(newProductPosition + 1)
+                            # DropDownPositionPercentage += float(newProductPosition - productIDPosition)\
+                            #                               /(newProductPosition + 1)
                             dropdown.append("Dropdown: " + str(newProductPosition - productIDPosition) +
                                             " || old position: " + str(productIDPosition + 1) +
                                             " || New position :" + str(newProductPosition + 1) +
                                             " || productID: " + str(SinglePurchasedProductID) +
                                             " || Query: " + SinglePurchaseQuery)
+                            # AUC2 = [old position, new position, product ID, Query, Query Length]
+                            AUC2.append([int(productIDPosition + 1), int(newProductPosition + 1),
+                                         str(SinglePurchasedProductID), SinglePurchaseQuery, len(QValue)])
+
                         else:
                             noChange.append("old position: " + str(productIDPosition + 1) +
                                             " || New position :" + str(newProductPosition + 1) +
@@ -317,130 +332,320 @@ def getTestData(total, TotalResult, path):
     TotalResult[0] = TotalResult[0] + improve
     TotalResult[1] = TotalResult[1] + dropdown
     TotalResult[2] = TotalResult[2] + noChange
+    TotalResult[3] = TotalResult[3] + AUC2
     return TotalResult
 
 # ==========================================================
 # ================ Start the func ==========================
 # ==========================================================
 total = {}
+# accumulativeClickDict = {}
+# accumulativePurchaseDict = {}
+# accumulativeShoppingCartDict = {}
+# accumulativeWishlistDict = {}
+
+# TotalDict = [accumulativeClickDict, accumulativePurchaseDict, accumulativeShoppingCartDict, accumulativeWishlistDict]
 # result = [improve, dropdown, noChange]
-TotalResult = [[], [], []]
-
-for x in xrange(30):
-    TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-
-    TestingPath = 'NewDispatchedData/UserDataJan/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
+TotalResult = [[], [], [], []]
 
 
-TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(31)+ "/"
+
+
+TrainingPath = 'DispatchedData/UserDataJan/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
+WishlistTrainingPath = "DispatchedData/UserFollowJan/"
 total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
-TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(1)+ "/"
+TestingPath = 'DispatchedData/UserDataFeb/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
 
-for x in xrange(30):
-    TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-    TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
-
-TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(31) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(31)+ "/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-TestingPath = 'NewDispatchedData/UserDataMar/'+ str(1)+ "/"
-TotalResult = getTestData(total, TotalResult, TestingPath)
-
-for x in xrange(30):
-    TrainingPath = 'NewDispatchedData/UserDataMar/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-    TestingPath = 'NewDispatchedData/UserDataMar/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
-
-
-TrainingPath = 'NewDispatchedData/UserDataMar/' + str(31) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(31)+ "/"
+TrainingPath = 'DispatchedData/UserDataFeb/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartFeb/"
+WishlistTrainingPath = "DispatchedData/UserFollowFeb/"
 total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
-TestingPath = 'NewDispatchedData/UserDataApr/'+ str(1)+ "/"
+TestingPath = 'DispatchedData/UserDataMar/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
 
-for x in xrange(30):
-    TrainingPath = 'NewDispatchedData/UserDataApr/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-
-    TestingPath = 'NewDispatchedData/UserDataApr/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
-
-TrainingPath = 'NewDispatchedData/UserDataApr/' + str(31) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(31)+ "/"
+TrainingPath = 'DispatchedData/UserDataMar/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMar/"
+WishlistTrainingPath = "DispatchedData/UserFollowMar/"
 total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
-TestingPath = 'NewDispatchedData/UserDataMay/'+ str(1)+ "/"
+TestingPath = 'DispatchedData/UserDataApr/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
 
-for x in xrange(30):
-    TrainingPath = 'NewDispatchedData/UserDataMay/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-    TestingPath = 'NewDispatchedData/UserDataMay/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
-
-
-TrainingPath = 'NewDispatchedData/UserDataMay/' + str(31) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(31)+ "/"
+TrainingPath = 'DispatchedData/UserDataApr/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartApr/"
+WishlistTrainingPath = "DispatchedData/UserFollowApr/"
 total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
-TestingPath = 'NewDispatchedData/UserDataJune/'+ str(1)+ "/"
+TestingPath = 'DispatchedData/UserDataMay/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
 
-for x in xrange(29):
-    TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
-    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1)+ "/"
-    WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1)+ "/"
-    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-
-    TestingPath = 'NewDispatchedData/UserDataJune/'+ str(x+2)+ "/"
-    TotalResult = getTestData(total, TotalResult, TestingPath)
-
-TrainingPath = 'NewDispatchedData/UserDataJune/' + str(30) + "/"
-ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(31)+ "/"
-WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(31)+ "/"
+TrainingPath = 'DispatchedData/UserDataMay/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMay/"
+WishlistTrainingPath = "DispatchedData/UserFollowMay/"
 total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
-TestingPath = 'NewDispatchedData/UserDataJune/'+ str(31)+ "/"
+TestingPath = 'DispatchedData/UserDataJune/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
+
+# TrainingPath = 'DispatchedData/UserDataJan/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
+# WishlistTrainingPath = "DispatchedData/UserFollowJan/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#Path = 'DispatchedData/UserDataFeb/'
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'DispatchedData/UserDataJan+Feb/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb/"
+# WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'DispatchedData/UserDataMar/'
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar/"
+# WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'DispatchedData/UserDataApr/'
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar+Apr/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar+Apr/"
+# WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar+Apr/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'DispatchedData/UserDataMay/'
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'DispatchedData/UserData1-5/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCart1-5/"
+# WishlistTrainingPath = "DispatchedData/UserFollow1-5/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'DispatchedData/UserDataJune/'
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#
+#     TestingPath = 'NewDispatchedData/UserDataJan/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(1)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#     TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(31) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+# TestingPath = 'NewDispatchedData/UserDataMar/'+ str(1)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataMar/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#     TestingPath = 'NewDispatchedData/UserDataMar/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+#
+# TrainingPath = 'NewDispatchedData/UserDataMar/' + str(31) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'NewDispatchedData/UserDataApr/'+ str(1)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataApr/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#
+#     TestingPath = 'NewDispatchedData/UserDataApr/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'NewDispatchedData/UserDataApr/' + str(31) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'NewDispatchedData/UserDataMay/'+ str(1)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataMay/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#     TestingPath = 'NewDispatchedData/UserDataMay/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+#
+# TrainingPath = 'NewDispatchedData/UserDataMay/' + str(31) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'NewDispatchedData/UserDataJune/'+ str(1)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# for x in xrange(30):
+#     TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
+#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1)+ "/"
+#     WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1)+ "/"
+#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False)
+#
+#     TestingPath = 'NewDispatchedData/UserDataJune/'+ str(x+2)+ "/"
+#     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
+# TrainingPath = 'NewDispatchedData/UserDataJune/' + str(30) + "/"
+# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(31)+ "/"
+# WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(31)+ "/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'NewDispatchedData/UserDataJune/'+ str(31)+ "/"
+# TotalResult = getTestData(total, TotalResult, TestingPath)
 
 print "=========================================================="
 print "================ The Final Result ========================"
 print "=========================================================="
-print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
-    ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
-    ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
+# print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
+#     ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
+#     ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
 for each in TotalResult[0]:
     print each
 print "=========================================================="
-print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
-    ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
-    ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
+# print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
+#     ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
+#     ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
 for each in TotalResult[1]:
     print each
 print "=========================================================="
+print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
+    ", Average: ", float(ImprovePosition)/len(TotalResult[0])
+    # ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
+print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
+    ", Average: ", float(DropDownPosition)/len(TotalResult[1])
+    # ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
 print "No Change :", len(TotalResult[2])
 print "GAMA: ", GAMA
+
+# for each in TotalResult[3]:
+#     print "old position: ", each[0], "new position: ", each[1], "|| product ID: ", each[2], \
+#         "|| Query:", each[3],"|| Query Lenth", each[4]
+
+# AUCDrop = []
+# AUCDropAveTotal = 0.0
+# AUCImprove = []
+# AUCImproveAveTotal = 0.0
+
+print "=========================================================="
+print "AUC2 :", len(TotalResult[3])
+print "average based on : AUC2@1, @2, @3, @4, @5, @6, @10, @20, @40, @all"
+OldAverageTotal = 0.0
+NewAverageTotal = 0.0
+
+# AUC2@ =    [ @1, @2, @3, @4, @5, @6, @10, @20, @40, @all]
+oldAUC2at =  [ [], [], [], [], [], [],  [],  [],  [],   []]
+newAUC2at =  [ [], [], [], [], [], [],  [],  [],  [],   []]
+
+
+for each in TotalResult[3]:
+    retAUC = auc2(each)
+    # oldAUC2Ave = sum(retAUC[0])/len(retAUC[0])
+    # OldAverageTotal += oldAUC2Ave
+    # newAUC2Ave = sum(retAUC[1]) / len(retAUC[1])
+    # NewAverageTotal += newAUC2Ave
+    #
+    # average = newAUC2Ave - oldAUC2Ave
+
+    # print " || old position: ", str(each[0]), " || new position: ", \
+    #     str(each[1]), "|| product ID: ", str(each[2]), "|| Query: ", \
+    #     each[3], "|| Query Lenth: ", str(each[4])
+
+    positionlist = [1,2,3,4,5,6,10,20,40,"all"]
+    for x in xrange(len(retAUC[0]) -1):
+        oldAUC2at[x].append(retAUC[0][x])
+        newAUC2at[x].append(retAUC[1][x])
+        # print "old AUC @" ,positionlist[x],": ", retAUC[0][x], "new AUC @" ,positionlist[x],": ", retAUC[1][x]
+
+    oldAUC2at[len(positionlist) -1].append(retAUC[0][len(retAUC[0]) -1])
+    newAUC2at[len(positionlist) - 1].append(retAUC[1][len(retAUC[1]) - 1])
+    # print "old AUC @", positionlist[len(positionlist) -1], ": ", retAUC[0][len(retAUC[0]) -1], "new AUC @", \
+    #         positionlist[len(positionlist) -1], ": ", retAUC[1][len(retAUC[1]) -1]
+
+print "=========================================================="
+print "Average AUC2 comparision"
+positionlist = [1,2,3,4,5,6,10,20,40,"all"]
+overallDiff = 0.0
+for x in xrange(10):
+    new = sum(newAUC2at[x])/len(newAUC2at[x])
+    old = sum(oldAUC2at[x])/len(oldAUC2at[x])
+    Diff = (new - old)/(old)
+    print "old AUC @" ,positionlist[x],": ",old, "|| new AUC @" ,positionlist[x],": ", new , "|| RP: ", Diff*100 , "%"
+    overallDiff += Diff
+
+print "Average RP :", overallDiff * 10, "%"
+
+# print "Average old AUC2:        ", OldAverageTotal/len(TotalResult[3])
+# print "Average new AUC2:        ", NewAverageTotal/len(TotalResult[3])
+# print "Improvement (new - old): ", NewAverageTotal/len(TotalResult[3]) - OldAverageTotal/len(TotalResult[3])
+    # AUC2 = [old position, new position, product ID, Query, Query Length]
+    # if retAUC[0] > retAUC[1]:
+    #     AUCDrop.append("AUC drop: " + str(retAUC[0] - retAUC[1]) + " || old position: " +
+    #                 str(each[0]) + " || new position: " +  str(each[1]) +  "|| product ID: " +
+    #                 str(each[2]) + "|| Query: " +  each[3] + "|| Query Lenth: " + str(each[4]))
+    #     AUCDropAveTotal += retAUC[0] - retAUC[1]
+    # else:
+    #     AUCImprove.append("AUC Improve: " + str(retAUC[1] - retAUC[0]) + " || old position: " +
+    #                 str(each[0]) + " || new position: " +  str(each[1]) +  "|| product ID: " +
+    #                 str(each[2]) + "|| Query: " +  each[3] + "|| Query Lenth: " + str(each[4]))
+    #     AUCImproveAveTotal += retAUC[1] - retAUC[0]
+
+
+
+# AUCDropAve = AUCDropAveTotal/ len(AUCDrop)
+# AUCImproveAve = AUCImproveAveTotal/len(AUCImprove)
+# print "=========================================================="
+# print "=========================================================="
+# print "AUC2 dropdown total: ", AUCDropAveTotal, "AUC2 dropdown average: ", AUCDropAve, \
+#         " || , AUC2 drop down number: ", len(AUCDrop)
+# print
+# for each in AUCDrop:
+#     print each
+# print
+# print "=========================================================="
+# print "=========================================================="
+# print "AUC2 Improve total: ", AUCImproveAveTotal, "AUC2 Improve average: ", AUCImproveAve, \
+#         " || , AUC2 Improve number: ", len(AUCImprove)
+# print
+# for each in AUCImprove:
+#     print each
+#
+# print "=========================================================="
+# print "=========================================================="
+# print "AUC improve - dropdown: ", str(AUCImproveAveTotal - AUCDropAveTotal)

@@ -25,7 +25,7 @@ global DropDownPosition
 global DropDownPositionPercentage
 
 # ======================================================================================================
-# ======================================================================================================
+# =============================          Update by days          =======================================
 # ======================================================================================================
 for x in xrange(30):
     TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
@@ -130,9 +130,47 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 
 
 # ======================================================================================================
+# =============================          Update by month          ======================================
 # ======================================================================================================
-# ======================================================================================================
+TrainingPath = 'DispatchedData/UserDataJan/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
+WishlistTrainingPath = "DispatchedData/UserFollowJan/"
+total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
+TestingPath = 'DispatchedData/UserDataFeb/'
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'DispatchedData/UserDataJan+Feb/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb/"
+WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb/"
+total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'DispatchedData/UserDataMar/'
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar/"
+WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar/"
+total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'DispatchedData/UserDataApr/'
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar+Apr/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar+Apr/"
+WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar+Apr/"
+total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'DispatchedData/UserDataMay/'
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'DispatchedData/UserData1-5/'
+ShoppingCartTrainingPath = "DispatchedData/UserAddToCart1-5/"
+WishlistTrainingPath = "DispatchedData/UserFollow1-5/"
+total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'DispatchedData/UserDataJune/'
+TotalResult = getTestData(total, TotalResult, TestingPath)
 
 
 
