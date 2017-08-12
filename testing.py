@@ -4,30 +4,47 @@ import numpy as np
 #Author:	Jinglong Du
 #email:		jid020@ucsd.edu
 
-# which user&query?
-WhichOne = 0
+# which user?
+UserID = 0
 
-#query?
+# which query?
 keyword = "手机"
-QueryList = 0
 
 #similarity?
 
+#init data
 init = np.array([])
 # READ IN DATA
+
+
+# READ IN QUERY
+prods = None
 try:
-	files = open(str(WhichOne), "r")
+	files = open(str("Query/" + keyword + ".QL"), "r")
+	prods = files.read().splitlines()
+	files.close()
+except Exception, e:
+	print "DATA WARNING:	Failed in Finding/Reading in Query list."
+
+
+
+
+# READ IN Q-Value if we have.
+try:
+	name = "model/" +str(UserID) + "&" + keyword + ".Mod"
+	files = open(name, "r")
 	init = files.readline().split()
 	init = [float(num) for num in init]
+	files.close()
 	print init
 except Exception, e:
-	pass
+	print "DATA WARNING:	Failed reading in model data in 41"
 
 # get q value
 if len(init) > 0:
 	q = init
 else:
-	q = list(range(len(prod[QueryList])))
+	q = list(reversed(range(len(prods))))
 
 
 # sort order to print
@@ -40,14 +57,15 @@ for i in xrange(len(q)):
 	for j in xrange(len(q)):
 		if q[i] == orig[j]:
 			orig[j] = -100000
-			OrderL.append(prod[QueryList][j]);
+			OrderL.append(prods[j]);
 			break
 OrderL.reverse()
 
 # print
 print "=============================="
-print "== Customer:      ", WhichOne,    "    =="
+print "== Customer:      ", UserID,    "       =="
+print "== keyword:       ", keyword, "    =="
 print "=============================="
 print "Rank     Original              New"
 for x in xrange(len(OrderL)):
-	print x+1, "      ", prod[QueryList][9-x], "     ", OrderL[x]
+	print x+1, "      ", prods[x], "     ", OrderL[x]

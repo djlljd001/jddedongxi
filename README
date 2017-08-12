@@ -1,0 +1,7 @@
+1.	Implementing the multi user and multi keyword feature
+			1.	Implement Query=>product-list data transfer
+			2.	Impmenent product reward, click reward, wish/cart reward data transfer
+			3.	Implement user+keyword model
+			4.  reverse the order to make it easier to read.
+		2.	Implementing the Match-Map feature with no match in default.
+			1.	just start.

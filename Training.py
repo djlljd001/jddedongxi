@@ -14,18 +14,36 @@ import numpy as np
 
 #gama is the iteration speed. which means how fast you want for each Iteration.
 GAMA  = 0.1
-IterationTime = 476842
+
+# 模拟训练
+IterationTime = 10
 DecayRate = None
 
 
-# which user&query?
-WhichOne = 0
 
+# which user?
+UserID = 0
 
-#query?
+# which query?
 keyword = "手机"
+
+# # which user&query?
+# UserID = 1
+
+
 #the result product list?
-QueryList = 0
+
+# READ IN DATA
+
+# READ IN QUERY
+prods = None
+try:
+	files = open(str("Query/" + keyword + ".QL"), "r")
+	prods = files.read().splitlines()
+	files.close()
+except Exception, e:
+	print "DATA WARNING:	Failed in Finding/Reading in Query list."
+
 
 # #if customer 0 and 1 is, lets assume,  >95% similarity
 # similar = 0.01
@@ -33,14 +51,25 @@ QueryList = 0
 # init = None
 init = np.array([])
 
-# READ IN DATA
+# # READ IN Q-Value if we have.
+# try:
+# 	files = open(str(UserID), "r")
+# 	init = files.readline().split()
+# 	init = [float(num) for num in init]
+# 	#print init
+# except Exception, e:
+# 	pass
+
+# READ IN Q-Value if we have.
 try:
-	files = open(str(WhichOne), "r")
+	name = "model/" +str(UserID) + "&" + keyword + ".Mod"
+	files = open(name, "r")
 	init = files.readline().split()
 	init = [float(num) for num in init]
-	#print init
+	print init
 except Exception, e:
-	pass
+	print "DATA WARNING:	Failed in 69"
+
 
 #the CORE function that calculate the Q-value.
 def func(r, maxQ, q):
@@ -48,32 +77,34 @@ def func(r, maxQ, q):
 	# return q + Decay(1)*GAMA*(r + maxQ - q)
 	return q + Decay(DecayRate, N_sa(0, 0))*GAMA*(r - q)
 
+
 # get q value
 if len(init) > 0:
 	q = init
 else:
-	q = list(range(10))
+	q = list(reversed(range(len(prods))))
+
 
 # implement iteration
 print "Iterating:"
-z = IterationTime/100
+z = IterationTime/100.0
 a = 0
+Rew = GetReward(UserID, keyword, len(prods))
+theMaxQ = max(q)
 for i in xrange(IterationTime):
 	# print "\nThe " , i+1 , " Round: "
-	if i/z > a:
-		a = i/z
+	if i/z > a + 1:
+		a = int(i/z)
 		print a , "%"
-	theMaxQ = max(q)
 	#for each data set:
-	Rew = GetReward(WhichOne, 0)
-
 	for k in xrange(len(q)):
 		q[k] = func(Rew[k], theMaxQ, q[k])
 		# print k+1, ": " , q[k]
 
 
 #SAVE
-files = open(str(WhichOne), "w")
+name = "model/" +str(UserID) + "&" + keyword + ".Mod"
+files = open( name , "w")
 for x in xrange(len(q)):
 	files.write(str(q[x]))
 	files.write(" ")
@@ -90,13 +121,14 @@ for i in xrange(len(q)):
 	for j in xrange(len(q)):
 		if q[i] == orig[j]:
 			orig[j] = -100000
-			OrderL.append(prod[WhichOne][j]);
+			OrderL.append(prods[j]);
 			break
 OrderL.reverse()
 
 print "=============================="
-print "== Customer:      ", WhichOne, "    =="
+print "== Customer:      ", UserID, "       =="
+print "== keyword:       ", keyword, "    =="
 print "=============================="
 print "Rank     Original              New"
 for x in xrange(len(OrderL)):
-	print x+1, "      ", prod[WhichOne][9-x], "     ", OrderL[x]
+	print x+1, "      ", prods[x], "     ", OrderL[x]

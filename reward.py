@@ -22,64 +22,133 @@ def N_sa(s1s, a):
 
 #The main function that will return the reward R[s'] for Step 2 State
 #There is no data yet, so set to 0 first.
-def R_S(s2s):
-	return proR[s2s]
+def R_S(keyword, lens):
+
+	prodRZ = None
+	prodRZName = "Query/" + keyword + ".QLR"
+	try:
+		files = open(prodRZName, "r")
+		prodRZ = files.read().splitlines()
+		files.close()
+	except Exception, e:
+		print "DATA WARNING:	Failed in Finding/Reading in product Reward AT 33"
+
+	if prodRZ != None:
+		return [int(x) for x in prodRZ]
+	else:
+		print "WARNING:	No product reward data AT 38"
+		return [0]*lens
 
 
 #this part will generate the initial value for Q. 
 def initQ(s1s, a, rank):
 	return 0
 
-def purchaseModel(purc):
-	reward = [0]*len(purc)
-	for x in xrange(len(purc)):
-		if purc[x] < 1:
+
+def purchaseModel(UserID, keyword, lens):
+	purchR = None
+	purchRName = "Data/purchase/" + str(UserID) + "&" + keyword + ".Hisdat"
+	print "purchase address:       " , purchRName
+	try:
+		files = open(purchRName, "r")
+		purchR = files.read().splitlines()
+		files.close()
+	except Exception, e:
+		print "DATA WARNING:	Failed in Finding/Reading in purchase Reward. AT 58"
+
+	if purchR != None:
+		purchR = [int(x) for x in purchR]
+		print "purchase data:          " , purchR
+	else:
+		print "WARNING:	No purchase reward. AT 64"
+		purchR = [0]*lens
+
+	reward = [0]*len(purchR)
+	for x in xrange(len(purchR)):
+		if purchR[x] < 1:
 			reward[x] = 0
-		elif purc[x] < 2:
+		elif purchR[x] < 2:
 			reward[x] = -1
-		elif purc[x] < 5:
+		elif purchR[x] < 5:
 			reward[x] = 3
-		elif purc[x] < 20:
+		elif purchR[x] < 20:
 			reward[x] = 8
 		else:
 			reward[x] = 20
 	return reward
 
 
-def clickModel(click):
-	minClick = min(click)
-	newClick = [0]*len(click)
-	newClick[:] = [x - minClick for x in click]
+def clickModel(UserID, keyword, lens):
+
+	clkR = None
+	clkRName = "Data/click/" + str(UserID) + "&" + keyword + ".Hisdat"
+	print "click address:          " , clkRName
+	try:
+		files = open(clkRName, "r")
+		clkR = files.read().splitlines()
+		files.close()
+	except Exception, e:
+		print "DATA WARNING:	Failed in Finding/Reading in click Reward. AT 93"
+
+	if clkR != None:
+		clkR = [int(x) for x in clkR]
+		print "click data:             ",  clkR
+	else:
+		print "WARNING:	No click reward. AT 99"
+		clkR = [0]*lens
+
+	minClick = min(clkR)
+	print "minClick: " , min(clkR)
+	newClick = [0]*len(clkR)
+	newClick[:] = [x - minClick for x in clkR]
 	maxClick = max(newClick)
-	reward = [0]*len(click)
-	for x in xrange(len(click)):
-		if click[x] <= 0:
+	reward = [0]*len(clkR)
+	for x in xrange(len(clkR)):
+		if clkR[x] <= 0:
 			reward[x] = 0
-		elif click[x] <= maxClick/16:
+		elif clkR[x] <= maxClick/16:
 			reward[x] = 1
-		elif click[x] <= maxClick/8:
+		elif clkR[x] <= maxClick/8:
 			reward[x] = 1.5
-		elif click[x] <= maxClick/4:
+		elif clkR[x] <= maxClick/4:
 			reward[x] = 2
-		elif click[x] <= maxClick/2:
+		elif clkR[x] <= maxClick/2:
 			reward[x] = 3
-		elif click[x] <= maxClick:
+		elif clkR[x] <= maxClick:
 			reward[x] = 4
 		else:
 			reward[x] = 5
 	return reward
 
 
-def wishListModel(wiL):
-	reward = [0]*len(wiL)
-	for x in xrange(len(wiL)):
-		if wiL[x] <= 0:
+def wishListModel(UserID, keyword, lens):
+
+	wiLiR = None
+	wiLiRName = "Data/Cart&WishList/" + str(UserID) + "&" + keyword + ".Hisdat"
+	print "Wishlist & Cart address:" , wiLiRName
+	try:
+		files = open(wiLiRName, "r")
+		wiLiR = files.read().splitlines()
+		files.close()
+	except Exception, e:
+		print "DATA WARNING:	Failed in Finding/Reading in wishList Reward. AT 133"
+
+	if wiLiR != None:
+		wiLiR = [int(x) for x in wiLiR]
+		print "Wishlist & Cart data:   ",  wiLiR
+	else:
+		print "WARNING:	No wishList reward. AT 139"
+		wiLiR = [None]*lens
+
+	reward = [0]*len(wiLiR)
+	for x in xrange(len(wiLiR)):
+		if wiLiR[x] <= 0:
 			reward[x] = 0
-		elif wiL[x] <= 1:
+		elif wiLiR[x] <= 1:
 			reward[x] = 3
-		elif wiL[x] <= 2:
+		elif wiLiR[x] <= 2:
 			reward[x] = 4
-		elif wiL[x] <= 4:
+		elif wiLiR[x] <= 4:
 			reward[x] = 5
 		else:
 			reward[x] = 6
@@ -89,65 +158,11 @@ def wishListModel(wiL):
 #The R[s1s, a] function, which corresponding to the target customers, key words and products.
 #No data yet, so set to 0 first.
 
-
 #with GPU, do that:
 #@vectorize(['float32(float32, float32)'], target='cuda')
-def GetReward(num, ProductList):
+def GetReward(UserID, keyword, lens):
 	# with GPU, just do:
 	# return x + y + z + u
-	return [x+y+z+u for x,y,z,u in zip(purchaseModel(purchase[num]),clickModel(click[num]),wishListModel(wishList[num]),R_S(ProductList))]
-
-
-
-# with GPU, need to change the form to:
-
-pur0 = [ 1, 0, 0, 0, 2, 0, 3, 0, 0, 0]
-pur1 = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-
-cli0 = [10, 1, 3, 5, 2, 8,39, 2, 1, 1]
-cli1 = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-
-WiL0 = [ 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
-WiL1 = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-
-proR0= [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-proR1= [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-
-# search : 手机
-prod0 = [ "小米 5         ",
-          "华为 p10       ",
-          "iphone 7       ",
-          "魅族 MX5       ",
-          "红米 note 3    ",
-          "三星 S8        ",
-          "一加 5         ",
-          "Oppo R11       ",
-          "VIVO Xplay 5   ",
-          "Nokia 3310     "]
-
-
-# search : 小米
-prod1 = [ "小米 MIX       ",
-          "小米 5s        ",
-          "小米 6         ",
-          "红米 note 2    ",
-          "红米 note 3    ",
-          "小米 MAX 2     ",
-          "小米笔记本 13.3 ",
-          "小米电视 4A     ",
-          "小米盒子 3 pro  ",
-          "小米盒子 3 mini "]
-
-
-
-prod = [prod0, prod1]
-proR = [proR0, proR1]
-
-
-purchase = [pur0, pur1]
-click = [cli0, cli1]
-wishList = [WiL0, WiL1]
+	ret = [x+y+z+u for x,y,z,u in zip(purchaseModel(UserID, keyword, lens), clickModel(UserID, keyword, lens), wishListModel(UserID, keyword, lens), R_S(keyword, lens))]
+	print "Final reward func: " , ret
+	return ret
