@@ -8,6 +8,29 @@ from numba import vectorize, float32, jit
 import time
 from datetime import datetime as dt
 import io
+# def Similarity(userid):
+def Similarity(userid, Query, total):
+    # total => [userid: data, userid: data].
+    # total[userid] = data
+    # data[query/keyword] = [ [sku list       ],
+    #                         [Initial Q-value],
+    #                         [Reward List    ]]
+    # return None
+
+    List = []
+    for each in total.items():
+        # each[0] is the userid
+        # each[1] is the data
+        # each[1][query] is the corresponding query return.
+        if each[1].has_key(Query):
+            List.append(each[0])
+    if len(List)<5 and len(List)>0:
+        print "Userid: ", userid , " + Query:" , Query , " => found similar:" ,str(len(List))
+        return total[List[0]]
+    else:
+        print "."
+        return None
+
 
 
 def combineTwoData(newData, existdata):
@@ -321,7 +344,7 @@ def clickModel(QueryList, ClickDict):
         if clkR[x] <= 0:
             reward[x] = 0
         elif clkR[x] <= maxClick/16:
-            reward[x] = 0
+            reward[x] = 0.5
         elif clkR[x] <= maxClick/8:
             reward[x] = 1
         elif clkR[x] <= maxClick/4:

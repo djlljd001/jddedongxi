@@ -23,7 +23,6 @@ from auc2 import *
 wlmiss = 0
 shpmiss = 0
 GAMA = 0.2
-scale = 10
 
 ImprovePosition = 0
 DropDownPosition = 0
@@ -44,11 +43,12 @@ DropDownPositionPercentage = 0.
 #   QValue:     [keyword: [float32 Q, float32 Q...],  keyword:  [float32 Q, float32 Q...], ... ]
 #   RewardValue:[keyword: [float32 R, float32 R...],  keyword:  [float32 R, float32 R...], ... ]
 
-@vectorize([float32(float32, float32)], target='cpu')
+
+@vectorize([float32(float32, float32)], target='parallel')
 def CoreFunc(r, q):
     # return q + Decay(DecayRate, N_sa(0, 0)) * GAMA * (r - q)
-    # return q + GAMA * (r - q)
-    return (1 - GAMA) * q + GAMA * r
+    return q + GAMA * (r - q)
+    # return (1 - GAMA) * q + GAMA * r
 
 
 def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTrainingPath):
@@ -184,8 +184,8 @@ def getTestData(total, TotalResult, path):
 
     global ImprovePosition
     global DropDownPosition
-    # global ImprovePositionPercentage
-    # global DropDownPositionPercentage
+    global ImprovePositionPercentage
+    global DropDownPositionPercentage
     improve = []
     dropdown = []
     noChange = []
@@ -196,8 +196,9 @@ def getTestData(total, TotalResult, path):
 
     # for each users in the test
     for each in TestTotal.items():
-        purchaseID = each[1][0]
 
+        purchaseID = each[1][0]
+        # print each[0]
         # each[0] is the filename, which represent userID
         # each[1] is the ret for this user that need to be tested.
         #       each [1][0] is the purchaseID
@@ -212,6 +213,7 @@ def getTestData(total, TotalResult, path):
 
                 # get that purchase's query from the the first record's query.
                 SinglePurchaseQuery = SinglePurchase[1][0][0]
+                SinglePurchaseUserID = base64.urlsafe_b64encode(SinglePurchase[1][0][1])
 
                 totalData = totalData + 1
                 TempData = None
@@ -219,10 +221,17 @@ def getTestData(total, TotalResult, path):
                 try:
                     # get potential data from total.
                     TempData = total[each[0]]
+
                 except Exception, e:
                     # print " Not found userID:", each[0], " and query:", SinglePurchase[0]
                     # not fount user.
                     notFound = notFound + 1
+
+
+                # not found user.
+                if TempData is None:
+                    TempData = Similarity(SinglePurchaseUserID,SinglePurchaseQuery , total)
+
 
                 # for now, I have SinglePurchase and TempData
                 # SinglePurchase represents:
@@ -236,6 +245,12 @@ def getTestData(total, TotalResult, path):
                     # print SinglePurchaseQuery, " == ", SinglePurchase[0]
                     # if has corresponding query
                     # if TempData.has_key(SinglePurchaseQuery):
+
+                    if SinglePurchaseQuery not in TempData:
+                        raedwtyhsrge = Similarity(each[0], SinglePurchaseQuery, total)
+                        if raedwtyhsrge is not None:
+                            TempData = raedwtyhsrge
+
                     if SinglePurchaseQuery in TempData:
 
                         # ModelDataList = [ [sku list], [Initial Q-Value], [Reward List] ]
@@ -243,7 +258,7 @@ def getTestData(total, TotalResult, path):
                         # print "Length of the current purchase's Q-list: ", len(SinglePurchase[1])
                         # start form 0, ends at 10, total length is 10.
                         # That Q-value is corresponding to the SinglePurchase's new query.
-                        QValue = np.arange(0, scale, scale*1.0/len(SinglePurchase[1]), dtype=np.float32)
+                        QValue = np.arange(0, 10, 10.0/len(SinglePurchase[1]), dtype=np.float32)
                         QValue = np.flip(QValue, 0)
 
                         # for splited in SinglePurchase[1]:
@@ -279,8 +294,8 @@ def getTestData(total, TotalResult, path):
 
                         if newProductPosition < productIDPosition:
                             ImprovePosition += productIDPosition - newProductPosition
-                            # ImprovePositionPercentage += float(productIDPosition - newProductPosition)\
-                            #                              /(productIDPosition + 1)
+                            ImprovePositionPercentage += float(productIDPosition - newProductPosition)\
+                                                         /(productIDPosition + 1)
                             improve.append("Improve: " + str(productIDPosition - newProductPosition) +
                                            " || old position: " + str(productIDPosition + 1) +
                                            " || New position :" + str(newProductPosition + 1) +
@@ -292,8 +307,8 @@ def getTestData(total, TotalResult, path):
 
                         elif newProductPosition > productIDPosition:
                             DropDownPosition += newProductPosition - productIDPosition
-                            # DropDownPositionPercentage += float(newProductPosition - productIDPosition)\
-                            #                               /(newProductPosition + 1)
+                            DropDownPositionPercentage += float(newProductPosition - productIDPosition)\
+                                                          /(newProductPosition + 1)
                             dropdown.append("Dropdown: " + str(newProductPosition - productIDPosition) +
                                             " || old position: " + str(productIDPosition + 1) +
                                             " || New position :" + str(newProductPosition + 1) +
@@ -311,6 +326,7 @@ def getTestData(total, TotalResult, path):
                     else:
                         # not found query for this user.
                         notFound = notFound + 1
+                        # print ".",
 
     # print "Finished current test."
     # print "=========================================================="
@@ -339,17 +355,8 @@ def getTestData(total, TotalResult, path):
 # ================ Start the func ==========================
 # ==========================================================
 total = {}
-# accumulativeClickDict = {}
-# accumulativePurchaseDict = {}
-# accumulativeShoppingCartDict = {}
-# accumulativeWishlistDict = {}
-
-# TotalDict = [accumulativeClickDict, accumulativePurchaseDict, accumulativeShoppingCartDict, accumulativeWishlistDict]
 # result = [improve, dropdown, noChange]
 TotalResult = [[], [], [], []]
-
-
-
 
 TrainingPath = 'DispatchedData/UserDataJan/'
 ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
@@ -391,17 +398,19 @@ total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTraini
 TestingPath = 'DispatchedData/UserDataJune/'
 TotalResult = getTestData(total, TotalResult, TestingPath)
 
+# =================================================================================
 # TrainingPath = 'DispatchedData/UserDataJan/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
 # WishlistTrainingPath = "DispatchedData/UserFollowJan/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-#Path = 'DispatchedData/UserDataFeb/'
+# total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+#
+# TestingPath = 'DispatchedData/UserDataFeb/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
 #
 # TrainingPath = 'DispatchedData/UserDataJan+Feb/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb/"
 # WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+# total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 #
 # TestingPath = 'DispatchedData/UserDataMar/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
@@ -409,7 +418,7 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 # TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar/"
 # WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+# total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 #
 # TestingPath = 'DispatchedData/UserDataApr/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
@@ -417,7 +426,7 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 # TrainingPath = 'DispatchedData/UserDataJan+Feb+Mar+Apr/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan+Feb+Mar+Apr/"
 # WishlistTrainingPath = "DispatchedData/UserFollowJan+Feb+Mar+Apr/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+# total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 #
 # TestingPath = 'DispatchedData/UserDataMay/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
@@ -425,10 +434,11 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 # TrainingPath = 'DispatchedData/UserData1-5/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCart1-5/"
 # WishlistTrainingPath = "DispatchedData/UserFollow1-5/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+# total = buildModel({}, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 #
 # TestingPath = 'DispatchedData/UserDataJune/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
+
 
 # for x in xrange(30):
 #     TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
@@ -438,6 +448,7 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 #
 #     TestingPath = 'NewDispatchedData/UserDataJan/'+ str(x+2)+ "/"
 #     TotalResult = getTestData(total, TotalResult, TestingPath)
+#
 #
 # TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
 # ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31)+ "/"
@@ -513,7 +524,7 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 # TestingPath = 'NewDispatchedData/UserDataJune/'+ str(1)+ "/"
 # TotalResult = getTestData(total, TotalResult, TestingPath)
 #
-# for x in xrange(30):
+# for x in xrange(29):
 #     TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
 #     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1)+ "/"
 #     WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1)+ "/"
@@ -530,33 +541,32 @@ TotalResult = getTestData(total, TotalResult, TestingPath)
 # TestingPath = 'NewDispatchedData/UserDataJune/'+ str(31)+ "/"
 # TotalResult = getTestData(total, TotalResult, TestingPath)
 
+
+
 print "=========================================================="
 print "================ The Final Result ========================"
 print "=========================================================="
-# print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
-#     ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
-#     ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
+print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
+    ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
+    ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
 for each in TotalResult[0]:
     print each
 print "=========================================================="
-# print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
-#     ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
-#     ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
+print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
+    ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
+    ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
 for each in TotalResult[1]:
     print each
 print "=========================================================="
-print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
-    ", Average: ", float(ImprovePosition)/len(TotalResult[0])
-    # ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
-print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
-    ", Average: ", float(DropDownPosition)/len(TotalResult[1])
-    # ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
 print "No Change :", len(TotalResult[2])
 print "GAMA: ", GAMA
+
 
 # for each in TotalResult[3]:
 #     print "old position: ", each[0], "new position: ", each[1], "|| product ID: ", each[2], \
 #         "|| Query:", each[3],"|| Query Lenth", each[4]
+
+
 
 # AUCDrop = []
 # AUCDropAveTotal = 0.0
@@ -582,10 +592,11 @@ for each in TotalResult[3]:
     # NewAverageTotal += newAUC2Ave
     #
     # average = newAUC2Ave - oldAUC2Ave
-
+    #
     # print " || old position: ", str(each[0]), " || new position: ", \
     #     str(each[1]), "|| product ID: ", str(each[2]), "|| Query: ", \
     #     each[3], "|| Query Lenth: ", str(each[4])
+
 
     positionlist = [1,2,3,4,5,6,10,20,40,"all"]
     for x in xrange(len(retAUC[0]) -1):
@@ -601,15 +612,12 @@ for each in TotalResult[3]:
 print "=========================================================="
 print "Average AUC2 comparision"
 positionlist = [1,2,3,4,5,6,10,20,40,"all"]
-overallDiff = 0.0
 for x in xrange(10):
-    new = sum(newAUC2at[x])/len(newAUC2at[x])
-    old = sum(oldAUC2at[x])/len(oldAUC2at[x])
-    Diff = (new - old)/(old)
-    print "old AUC @" ,positionlist[x],": ",old, "|| new AUC @" ,positionlist[x],": ", new , "|| RP: ", Diff*100 , "%"
-    overallDiff += Diff
+    print "old AUC @" ,positionlist[x],": ", sum(oldAUC2at[x])/len(oldAUC2at[x]), "new AUC @" ,positionlist[x],": ", \
+            sum(newAUC2at[x])/len(newAUC2at[x])
 
-print "Average RP :", overallDiff * 10, "%"
+
+print "Program End"
 
 # print "Average old AUC2:        ", OldAverageTotal/len(TotalResult[3])
 # print "Average new AUC2:        ", NewAverageTotal/len(TotalResult[3])
