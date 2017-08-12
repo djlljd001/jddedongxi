@@ -1,17 +1,9 @@
 Training.py and testing.py is abandoned from now. keep it there just for reference.
 
-1.	Get the data. Working on handling these data.
-1.	import all data.
-2.	format all data.
-3.	Optimize it to around 50 seconds/(1000 user)/1 thread or 
-	100 seconds /(1000 * 8 user)/8 thread for i7-4700MQ(Haswell 4C8T @ 2.4Ghz ~ 3.4Ghz)
-	to import 6 month data and initialize everything.
-4.	Optimize to 2.5 seconds to do 1 iteration based on data above.
-5.	Working on the iteration.
-6.	Dispatch data for each month in order to train it with Jan 1 ~ May 30, test with June.
-7.	Design model saving plan.
-	(not save for now)
-8.	Design model iteration plan.
-	(test 1 large scale simulating iteration first)
-9.	Design model testing plan.
-	(train it with Jan 1 ~ May 30, test with June)
+1.	finished all necessary test.	Screwed up. 
+	I think the problem should be the initial query I choose to setup. I still use the old query as reference to train the data,
+	and even the original effect is not as same as what it should be. So I need to restart again...
+2.	Need to reconsider the model problem.
+	1.	tuning the reward function.
+	2.	using daily data to train and test, so it might be better for query init.
+	3.	distinct the init query. recalculate the iteration. everytime, use Q as add-on model to rerank and give feedback.

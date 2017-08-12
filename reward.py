@@ -8,15 +8,44 @@
 import numpy as np
 from numba import vectorize, float32, jit
 import time
+from datetime import datetime as dt
 import io
+def importTestingUserData(UserNameID):
+    try:
+        ret = []
+        filename = u"DispatchedData/UserDataJan/" + UserNameID
+        files = io.open(filename, "r" ,encoding='utf8')
+        userData = files.read().splitlines()
+        # split data here once to optimize program later
+        for line in userData:
+            splited = line.split("\t")
+            ret.append(splited)
+        files.close()
+        return ret
+    except Exception, e:
+        print "DATA WARNING:    Failed in Finding/Reading in Test Query name list."
+        return None
 
+def getTestPurchaseDict(userData):
+    # ( str(product sku), int purchase time)
+    PurchaseDict = []
+    # for line in userData:
+    #     splited = line.split("\t")
 
-
+    for splited in userData:
+        # save purchase data
+        if splited[7] == "1":
+            PurchaseDict.append(splited)
+            # if PurchaseDict.has_key(splited[0] + splited[3]):
+            #     PurchaseDict[splited[0] + splited[3]] += int(splited[7])
+            # else:
+            #     PurchaseDict[splited[0] + splited[3]] = int(splited[7])
+    return PurchaseDict
 
 def importUserData(UserNameID):
     try:
         ret = []
-        filename = u"UserData/" + UserNameID
+        filename = u"DispatchedData/UserDataJan/" + UserNameID
         files = io.open(filename, "r" ,encoding='utf8')
         userData = files.read().splitlines()
         # split data here once to optimize program later
@@ -29,26 +58,34 @@ def importUserData(UserNameID):
         print "DATA WARNING:    Failed in Finding/Reading in Query name list."
         return None
 
+
+# not enough data for now, so return None for now.
 def importWLData(UserNameID):
-    try:
-        ret = {}
-        filename = u"UserFollow/" + UserNameID
-        files = io.open(filename, "r" ,encoding='utf8')
-        userData = files.read().splitlines()
-        # split data here once to optimize program later
-        for line in userData:
-            splited = line.split("\t")
-            ret[splited[1]] = 1
-        files.close()
-        return ret
-    except Exception, e:
-        # print "DATA WARNING:    Failed in Finding/Reading in", UserNameID, " wishlist product list."
-        return None
+    # =========================================================================================
+    # =========================================================================================
+    # try:
+    #     ret = {}
+    #     filename = u"DispatchedData/UserFollowJan/" + UserNameID
+    #     files = io.open(filename, "r" ,encoding='utf8')
+    #     userData = files.read().splitlines()
+    #     # split data here once to optimize program later
+    #     for line in userData:
+    #         splited = line.split("\t")
+    #         ret[splited[1]] = 1
+    #     files.close()
+    #     return ret
+    # except Exception, e:
+    #     # print "DATA WARNING:    Failed in Finding/Reading in", UserNameID, " wishlist product list."
+    #     return None
+    # =========================================================================================
+    # =========================================================================================
+    return None
+
 
 def importShoppingData(UserNameID):
     try:
         ret = {}
-        filename = u"UserAddToCart/" + UserNameID
+        filename = u"DispatchedData/UserAddToCartJan/" + UserNameID
         files = io.open(filename, "r" ,encoding='utf8')
         userData = files.read().splitlines()
         # split data here once to optimize program later
@@ -69,6 +106,7 @@ def getClickDict(userData):
     # for line in userData:
     #     splited = line.split("\t")
     for splited in userData:
+        # print splited
         # save click data
         if ClickDict.has_key(splited[3]):
             ClickDict[splited[3]] += int(splited[6])
@@ -100,7 +138,12 @@ def FormatQuery(userData):
     for splited in userData:
         #save Useful query data
         if splited[6] == "1" or splited[7] == "1":
-            UsefulQuery[splited[0]] = True
+            if UsefulQuery.has_key(splited[0]):
+                if UsefulQuery[splited[0]] >  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S'):
+                    UsefulQuery[splited[0]] = dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
+            else:
+                #   dt.strptime("10/12/13", "%m/%d/%y")   2017-03-12 09:48:44
+                UsefulQuery[splited[0]] =  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
 
     # save useful query's product list.
     # for line in userData:
@@ -112,15 +155,23 @@ def FormatQuery(userData):
             if NewQuery.has_key(splited[0]):
                 #if that query does not contains that product
                 if int(splited[3]) not in NewQuery[splited[0]]:
-                    #if that query's position is out of range.
-                    if int(splited[4]) >= len(NewQuery[splited[0]]):
+
+
+                    #if that query's position is in the range.
+                    if int(splited[4]) <= len(NewQuery[splited[0]]):
+                        # if the new inserted products is in the most up to date query order, then
+                        if dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S') <= UsefulQuery[splited[0]]:
+                            # insert that products to the corresponding position into list that is newly
+                            # shown in the up-to-date query.
+                            NewQuery[splited[0]].insert(int(splited[4]) - 1, int(splited[3]))
+                        else:
+                            # append to the end of the products list
+                            NewQuery[splited[0]].append(int(splited[3]))
+                    # if it is out of range, i.e. it is the new added product for that query
+                    else:
                         # append to the end of the products list
                         NewQuery[splited[0]].append(int(splited[3]))
-                    # if it is not out of range, i.e. it is the new added product for that query
-                    else:
-                        # insert that products to the corresponding position into list that is newly shown
-                        # in the up-to-date query.
-                        NewQuery[splited[0]].insert( int(splited[4])-1  , int(splited[3]))
+
             # if not have that query yet. Create new list for that query.
             else:
                 NewQuery[splited[0]] = [int(splited[3])]
@@ -296,5 +347,5 @@ def GetReward( QueryList, ClickDict, PurchaseDict , WishListDict, ShoppingCartDi
 # @vectorize()
 @vectorize(['float32(float32, float32, float32, float32, float32)'], target='cpu')
 def addTogether(X, Y, Z, U, V):
-    return X + Y  + Z + U + V
+    return X + Y + Z + U + V
 

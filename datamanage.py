@@ -1,6 +1,12 @@
 import io
+import os
 import base64
 import datetime
+
+
+exit()
+exit()
+exit()
 
 # Way to use base64:
 # file_name_string = base64.urlsafe_b64encode("***$^%^(&&^$%&%*^(&*^?<>{}:>?<***")
@@ -14,7 +20,7 @@ import datetime
 
 
 # filename = "behav_history_20170101_20170630"
-filename = "user_cart_history_converted"
+filename = "behav_history_20170101_20170630"
 files = io.open(filename, "r", encoding='utf8')
 lines = files.read().splitlines()
 totalLines = len(lines)
@@ -43,6 +49,7 @@ def convertUnixDateToDate(i, a):
     newFile.close()
 
 def splitFile(i, a):
+
     for line in lines:
         # ================= percentage ========
         if i / z > a + 1:  # =====
@@ -52,12 +59,17 @@ def splitFile(i, a):
         # ================= percentage ========
 
         splited = line.split("\t")
-        userid =  base64.urlsafe_b64encode(splited[0])
-        NewFilename = "UserAddToCart/" + userid
-        # NewFilename = "UserData/" + userid
-        newFile = io.open(NewFilename, "a", encoding='utf8')
-        newFile.write(line + "\n")
-        newFile.close()
+        if "2017-01-" in splited[5] or "2017-02-" in splited[5]:
+            userid =  base64.urlsafe_b64encode(splited[1])
+            NewFilename = "DispatchedData/newnewnfwefcwewvce/" + userid
+            newFile = io.open(NewFilename, "a", encoding='utf8')
+            newFile.write(line + "\n")
+            newFile.close()
+
+def mergeData(i, a):
+    pass
+
+
 
 def cleanUselessData(i,a):
     for line in lines:
@@ -68,11 +80,7 @@ def cleanUselessData(i,a):
         i = i + 1
         # ================= percentage ========
 
-
-
-
-
 # convertUnixDateToDate(i, a)
-# splitFile(i, a)
+splitFile(i, a)
 
 files.close()
