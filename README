@@ -1,1 +1,7 @@
-Training.py and testing.py is abandoned from now. keep it there just for reference.
+RLTesterV4.3
+Author:		Jinglong Du
+Email:		jid020@ucsd.edu
+
+Finished accumulating model importing and iteration under control.
+Finished accumulating test result.
+Fix bugs.

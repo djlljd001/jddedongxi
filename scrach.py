@@ -1,6 +1,6 @@
-#-*- coding: utf-8 -*-
-#Author:	Jinglong Du
-#email:		jid020@ucsd.edu
+# -*- coding: utf-8 -*-
+# Author:	Jinglong Du
+# email:		jid020@ucsd.edu
 
 # Way to use base64:
 # file_name_string = base64.urlsafe_b64encode("***$^%^(&&^$%&%*^(&*^?<>{}:>?<***")
@@ -10,7 +10,7 @@
 # exit()
 # start_time = time.time()
 # print("--- %s seconds ---" % (time.time() - start_time))
-
+# from saver import *
 from reward import *
 import numpy as np
 from numba import vectorize, float32, jit
@@ -22,6 +22,11 @@ import os
 wlmiss = 0
 shpmiss = 0
 GAMA = 0.2
+
+ImprovePosition = 0
+DropDownPosition = 0
+ImprovePositionPercentage = 0.
+DropDownPositionPercentage = 0.
 
 # best for now: 0.2 13/1
 #   0.15  9/1
@@ -37,6 +42,7 @@ GAMA = 0.2
 #   QValue:     [keyword: [float32 Q, float32 Q...],  keyword:  [float32 Q, float32 Q...], ... ]
 #   RewardValue:[keyword: [float32 R, float32 R...],  keyword:  [float32 R, float32 R...], ... ]
 
+
 @vectorize([float32(float32, float32)], target='cpu')
 def CoreFunc(r, q):
     # return q + Decay(DecayRate, N_sa(0, 0)) * GAMA * (r - q)
@@ -44,24 +50,22 @@ def CoreFunc(r, q):
     return (1 - GAMA) * q + GAMA * r
 
 
-def formatdata(UserNameID):
-    # (keyword : [ 10, 9, 8, 7...])
-    # Just try what's going on there.
-    # the temporary dictionary for that person for that kind of data.
+def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTrainingPath):
     global start_time
     global accTime
 
     # list of (keyword, [])
-    userData = importUserData(UserNameID)
-    WishListDict = importWLData(UserNameID)
-    ShoppingCartDict = importShoppingData(UserNameID)
+    userData = importUserData(UserNameID, path)
+    ShoppingCartDict = importShoppingData(UserNameID, ShoppingCartTrainingPath)
+    WishListDict = importWLData(UserNameID, WishlistTrainingPath)
+
     # about 9 second
 
-    if WishListDict == None:
+    if WishListDict is None:
         global wlmiss
         wlmiss = wlmiss + 1
 
-    if ShoppingCartDict == None:
+    if ShoppingCartDict is None:
         global shpmiss
         shpmiss = shpmiss + 1
 
@@ -75,90 +79,110 @@ def formatdata(UserNameID):
     # print "lens of NewQuery:" , len(NewQuery)
     # about 20 seconds
 
-    ret = {}
+    newData = {}
     for each in NewQuery.items():
         # return [userID] = [ [sku, sku ...], [float Q, float Q, ...], [Reward R, reward R, ...] ]
-        ret[each[0]] = [each[1], np.zeros((len(each[1]),), dtype=np.float32),
-                        GetReward(each[1], ClickDict, PurchaseDict, WishListDict, ShoppingCartDict)]
+        newData[each[0]] = [each[1], np.zeros((len(each[1]),), dtype=np.float32),
+                            GetReward(each[1], ClickDict, PurchaseDict, WishListDict, ShoppingCartDict)]
+
+    # existdata:       [NewQuery, QValue, RewardValue]
+    ret = newData
+    if len(existdata) > 0:
+        # print existdata.items()[0]
+        # combine two data set together.
+        ret = combineTwoData(newData, existdata)
 
     # about 10 seconds
     # return [NewQuery,QValue, RewardValue]
     return ret
 
-def buildModel():
-    # ==================================================================================================
+
+def buildModel(total, path, ShoppingCartTrainingPath, WishlistTrainingPath, Iteration):
+    global wlmiss
+    global shpmiss
+    # ============================================================================================
     # init path for Basic info and query and click and purchase data.
-    path = 'DispatchedData/UserData1-5/'
+    # path = 'DispatchedData/UserData1-5/'
     i = 0
     # ================= percentage ========
-    z = len(os.listdir(path))/100.0 # =====
-    a = 0                           # =====
+    z = len(os.listdir(path))/20.0  # ====
+    a = 0                            # ====
     # ================= percentage ========
 
     start_time = time.time()
-    total = {}
 
     # Import all data into the dictionary total.
-    print "Start importing data and generating initial models."
+    print "\n"
+    print "Start importing data and generating model."
+    print "====================================="
+
     for filename in os.listdir(path):
         # ================= percentage ========
         if i / z > a + 1:               # =====
             a = int(i / z)              # =====
-            print a, "%"                # =====
+            print "-",                  # =====
         # ================= percentage ========
-        data = formatdata(filename)
+
+        # see if current user exits
+        existdata = []
+        if filename in total:
+            existdata = total[filename]
+
+        data = formatdata(filename, existdata, path, ShoppingCartTrainingPath, WishlistTrainingPath)
         total[filename] = data
         i = i+1
-
 
     # for each in total.items():
     #     print each[0], " ==> ", each[1]
     #     break
-    print "=========================================================="
-    print "Finished building the initial model."
-    print "Wish-list miss match:    ", wlmiss
-    print "shopping cart miss match:", shpmiss
-    print "Total customer found:    ", len(total)
+    print ""
+    print "====================================="
+    # print "Finished building the initial model."
+    # print "Wish-list miss match:    ", wlmiss
+    #
+    # wlmiss = 0
+    # print "shopping cart miss match:", shpmiss
+    #
+    # shpmiss = 0
+    # print "Total customer found:    ", len(total)
     print("--- Read in data and initialization:    %s seconds ---" % (time.time() - start_time))
     # print("--- accumulative %s seconds ---" % accTime)
-    #Single thread, 1000 user data. cost 50s.
-    #8 threads, 8000 user data in total, cost 100s.
-    #8 threads with cuda, 8000 user data in total, cost 300s.
+    # Single thread, 1000 user data. cost 50s.
+    # 8 threads, 8000 user data in total, cost 100s.
+    # 8 threads with cuda, 8000 user data in total, cost 300s.
 
     # Then start first Iteration for just one time with GAMA as followed.
-    print "=========================================================="
-    print "Start iterations for models."
-    start_time = time.time()
-    for data in total.items():
-        for each in data[1].items():
-            # each ==> [sku[], InitQ[], Reward[]]
-            # print "========================================================"
-            # # total[userID][keyword/query][Q-value]
-            # print total[data[0]][each[0]][1]
-            total[data[0]][each[0]][1] = CoreFunc(each[1][2], each[1][1])
-            # print total[data[0]][each[0]][1]
-    print("--- Last Iteration time: %s seconds ---" % (time.time() - start_time))
+    if Iteration:
+
+        print "Start iterations for models."
+        start_time = time.time()
+        for data in total.items():
+            for each in data[1].items():
+                # each ==> [sku[], InitQ[], Reward[]]
+                # print "========================================================"
+                # # total[userID][keyword/query][Q-value]
+                # print total[data[0]][each[0]][1]
+                total[data[0]][each[0]][1] = CoreFunc(each[1][2], each[1][1])
+                # print total[data[0]][each[0]][1]
+        print("--- Last Iteration time: %s seconds ---" % (time.time() - start_time))
     return total
 
-def getTestData(total):
-    # ==================================================================================================
+
+def getTestData(total, TotalResult, path):
+    # ==========================================================================================
     # init path for Basic info and query and click and purchase data.
-    path = 'DispatchedData/UserDataJune/'
+    # path = 'DispatchedData/UserDataJune/'
     TestTotal = {}
     # Import all data into the dictionary total.
     print "Start importing testing data."
     for filename in os.listdir(path):
-
-        ret = formataaaadata(filename)
-
-        # purchaseID[sessionID] = targetPurchaseID
-        # purchaseID = ret[0]
-        # returnDict[sessionID] = [splited, splited, splited, ...]
-        # returnDict = ret[1]
+        ret = formatTestdata(filename, path)
         TestTotal[filename] = ret
 
-    result = []
-    QValue = None
+    global ImprovePosition
+    global DropDownPosition
+    global ImprovePositionPercentage
+    global DropDownPositionPercentage
     improve = []
     dropdown = []
     noChange = []
@@ -168,7 +192,7 @@ def getTestData(total):
 
     # for each users in the test
     for each in TestTotal.items():
-        purchaseID = each [1][0]
+        purchaseID = each[1][0]
 
         # each[0] is the filename, which represent userID
         # each[1] is the ret for this user that need to be tested.
@@ -176,7 +200,7 @@ def getTestData(total):
         #       each [1][1] is the returnDict
 
         # if there is more than one in returnDict, which means there is purchase
-        if len(each[1][1].items())>1:
+        if len(each[1][1].items()) > 1:
             # print len(each[1].items())
 
             # for each purchases for one user
@@ -184,7 +208,6 @@ def getTestData(total):
 
                 # get that purchase's query from the the first record's query.
                 SinglePurchaseQuery = SinglePurchase[1][0][0]
-
 
                 totalData = totalData + 1
                 TempData = None
@@ -204,11 +227,13 @@ def getTestData(total):
                 # TempData represents:
                     # Data[Query/keywords] = [ [sku list], [Initial Q-Value], [Reward List] ]
                 # if has corresponding user
-                if TempData != None:
+                if TempData is not None:
 
                     # print SinglePurchaseQuery, " == ", SinglePurchase[0]
                     # if has corresponding query
-                    if TempData.has_key(SinglePurchaseQuery):
+                    # if TempData.has_key(SinglePurchaseQuery):
+                    if SinglePurchaseQuery in TempData:
+
                         # ModelDataList = [ [sku list], [Initial Q-Value], [Reward List] ]
                         ModelDataList = TempData[SinglePurchaseQuery]
                         # print "Length of the current purchase's Q-list: ", len(SinglePurchase[1])
@@ -247,133 +272,175 @@ def getTestData(total):
                         # print QValue
                         newProductPosition = list(QValue).index(TargetQValue)
                         if newProductPosition < productIDPosition:
-                            improve.append("old position: "+ str(productIDPosition + 1) +
-                                " || New position :"+ str(newProductPosition + 1) +
-                                " || productID: " + str(SinglePurchasedProductID) + " || Query: " + SinglePurchaseQuery)
+                            ImprovePosition += productIDPosition - newProductPosition
+                            ImprovePositionPercentage += float(productIDPosition - newProductPosition)/(productIDPosition + 1)
+                            improve.append("Improve: " + str(productIDPosition - newProductPosition) +
+                                           " || old position: " + str(productIDPosition + 1) +
+                                           " || New position :" + str(newProductPosition + 1) +
+                                           " || productID: " + str(SinglePurchasedProductID) +
+                                           " || Query: " + SinglePurchaseQuery)
 
                         elif newProductPosition > productIDPosition:
-                            dropdown.append("old position: " + str(productIDPosition + 1) +
-                                " || New position :" + str(newProductPosition + 1) +
-                                " || productID: " + str(SinglePurchasedProductID) + " || Query: " + SinglePurchaseQuery)
+                            DropDownPosition += newProductPosition - productIDPosition
+                            DropDownPositionPercentage += float(newProductPosition - productIDPosition)/(newProductPosition + 1)
+                            dropdown.append("Dropdown: " + str(newProductPosition - productIDPosition) +
+                                            " || old position: " + str(productIDPosition + 1) +
+                                            " || New position :" + str(newProductPosition + 1) +
+                                            " || productID: " + str(SinglePurchasedProductID) +
+                                            " || Query: " + SinglePurchaseQuery)
                         else:
                             noChange.append("old position: " + str(productIDPosition + 1) +
-                                " || New position :" + str(newProductPosition + 1) +
-                                " || productID: " + str(SinglePurchasedProductID) + " || Query: " + SinglePurchaseQuery)
-                        # print "old position: ", productIDPosition + 1, " || New position :", newProductPosition + 1
-                        # if SinglePurchasedProductID in ModelDataList[0]:
-                        #     # get the position in that products list.
-                        #     productIDPosition = ModelDataList[0].index(SinglePurchasedProductID)
-                        #     print len(QValue)
-                        #     print "SinglePurchasedProductID:" , SinglePurchasedProductID
-                        #     print "productIDPosition:       " , productIDPosition
-                        #     NewQValueForPurchaseProducts = QValue[productIDPosition]
-                        #     print "NewQValueForPurchaseProducts:    " , NewQValueForPurchaseProducts
+                                            " || New position :" + str(newProductPosition + 1) +
+                                            " || productID: " + str(SinglePurchasedProductID) +
+                                            " || Query: " + SinglePurchaseQuery)
                     else:
                         # not found query for this user.
                         notFound = notFound + 1
 
-                # QVal = TempData[1][productIDPosition]
-                #
-                # sortedQValueOrder = list(TempData[1])
-                # # print sortedQValueOrder
-                # sortedQValueOrder.sort()
-                # sortedQValueOrder.reverse()
-                # # print sortedQValueOrder
-                # newProductPosition = sortedQValueOrder.index(QVal)
-
-                #Q-value here
-                # print QValue
-                #purchaseID[sessionID]
-
-                # tempSessionID = SinglePurchase[1][0][2]
-                # print "==============================================="
-                # print "first session ID is :", tempSessionID
-                # for trefagefa in SinglePurchase[1]:
-                #     if tempSessionID != trefagefa[2]:
-                #         print "==============================================="
-                #         print "first session ID is :", tempSessionID
-                #         print "Different SessionID is: ", trefagefa[2]
-
-
-
-
-
-    # ********************************************************************************************
-    #         for SinglePurchase in each[1].item():
-    #             # print "============================="
-    #             # print SinglePurchase
-    #             totalData = totalData + 1
-    #             TempData = None
-    #             # [query, userid, sessionid, productid, rank, time, click, purchase
-    #             try:
-    #                 # all the data needed here from total.
-    #                 TempData = total[each[0]][SinglePurchase[0]]
-    #             except Exception, e:
-    #                 # print " Not found userID:", each[0], " and query:", SinglePurchase[0]
-    #                 notFound = notFound + 1
-    #
-    #             # the product ID that purchased.
-    #             TempProductID = int(SinglePurchase[3])
-    #             # the old position that in the search list
-    #             TempOldProductPosition = int(SinglePurchase[4])
-    #             # if product found here
-    #
-    #             if TempData != None:
-    #                 if TempProductID in TempData[0]:
-    #                     # print int(SinglePurchase[3]) ," at ==> \n",total[each[0]][SinglePurchase[0]][0]
-    #                     # print "TempData[0]", TempData[0]
-    #                     # print "TempData[1]", TempData[1]
-    #
-    #                     productIDPosition =  TempData[0].index(TempProductID)
-    #                     QVal = TempData[1][productIDPosition]
-    #
-    #                     sortedQValueOrder = list(TempData[1])
-    #                     # print sortedQValueOrder
-    #                     sortedQValueOrder.sort()
-    #                     sortedQValueOrder.reverse()
-    #                     # print sortedQValueOrder
-    #
-    #                     newProductPosition = sortedQValueOrder.index(QVal)
-    #
-    #                     if TempOldProductPosition > newProductPosition + 1:
-    #                         improve.append("old: " + str(TempOldProductPosition) +
-    #                                        "|| new: " + str(newProductPosition + 1))
-    #                     elif TempOldProductPosition < newProductPosition + 1:
-    #                         dropdown.append("old: " + str(TempOldProductPosition) +
-    #                                         "|| new: " + str(newProductPosition + 1))
-    #                     else:
-    #                         noChange.append("old: " + str(TempOldProductPosition) +
-    #                                         "|| new: " + str(newProductPosition + 1))
-    #                 # else not found
-    #                 else:
-    #                     notFound = notFound + 1
-    # print " total purchase number is:", totalData
-    # print " total found number is:   ", totalData - notFound
-
-    print "Finished test."
-    print "=========================================================="
-    print " improve  :" , len(improve)
-    for each in improve:
-        print each
-    print "=========================================================="
-
-    print " dropdown :" , len(dropdown)
-    for each in dropdown:
-        print each
+    # print "Finished current test."
     # print "=========================================================="
-    # print len(noChange)
-    # ********************************************************************************************
-    print "total Purchase History for tested month:       ", totalData
-    print "Model that not Found for corresponding query:  ", notFound
-    print "GAMA: ", GAMA
+    # print " improve  :", len(improve)
+    # for each in improve:
+    #     print each
+    # print "=========================================================="
+    #
+    # print " dropdown :", len(dropdown)
+    # for each in dropdown:
+    #     print each
+    # print "=========================================================="
+    # print " noChange :", len(noChange)
+    # # ********************************************************************************************
+    # print "total Purchase History for tested month:       ", totalData
+    # print "Model that not Found for corresponding query:  ", notFound
+    # print "GAMA: ", GAMA
 
-    return [improve, dropdown, noChange]
+    TotalResult[0] = TotalResult[0] + improve
+    TotalResult[1] = TotalResult[1] + dropdown
+    TotalResult[2] = TotalResult[2] + noChange
+    return TotalResult
 
-# total = None
-total = buildModel()
+# ==========================================================
+# ================ Start the func ==========================
+# ==========================================================
+total = {}
+# result = [improve, dropdown, noChange]
+TotalResult = [[], [], []]
 
-#result = [improve, dropdown, noChange]
-result = getTestData(total)
-# for each in result:
-#     print each
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
 
+    TestingPath = 'NewDispatchedData/UserDataJan/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+
+TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+    TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+TestingPath = 'NewDispatchedData/UserDataMar/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataMar/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+    TestingPath = 'NewDispatchedData/UserDataMar/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+
+TrainingPath = 'NewDispatchedData/UserDataMar/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'NewDispatchedData/UserDataApr/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataApr/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+    TestingPath = 'NewDispatchedData/UserDataApr/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'NewDispatchedData/UserDataApr/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'NewDispatchedData/UserDataMay/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataMay/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+    TestingPath = 'NewDispatchedData/UserDataMay/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+
+TrainingPath = 'NewDispatchedData/UserDataMay/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'NewDispatchedData/UserDataJune/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+for x in xrange(29):
+    TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+    TestingPath = 'NewDispatchedData/UserDataJune/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath)
+
+TrainingPath = 'NewDispatchedData/UserDataJune/' + str(30) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
+
+TestingPath = 'NewDispatchedData/UserDataJune/'+ str(31)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath)
+
+print "=========================================================="
+print "================ The Final Result ========================"
+print "=========================================================="
+print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
+    ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
+    ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
+for each in TotalResult[0]:
+    print each
+print "=========================================================="
+print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
+    ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
+    ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
+for each in TotalResult[1]:
+    print each
+print "=========================================================="
+print "No Change :", len(TotalResult[2])
+print "GAMA: ", GAMA
