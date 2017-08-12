@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+
+# IMPORTANT: DO NOT MANIPULATE DATA HERE! READ ONLY.	 	
+
+
 from reward import *
 import numpy as np
 #Author:	Jinglong Du
@@ -63,7 +67,7 @@ OrderL.reverse()
 
 # print
 print "=============================="
-print "== Customer:      ", UserID,    "       =="
+print "== Customer:      ", UserID, "       =="
 print "== keyword:       ", keyword, "    =="
 print "=============================="
 print "Rank     Original              New"

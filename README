@@ -1,7 +1,9 @@
-1.	Implementing the multi user and multi keyword feature
-			1.	Implement Query=>product-list data transfer
-			2.	Impmenent product reward, click reward, wish/cart reward data transfer
-			3.	Implement user+keyword model
-			4.  reverse the order to make it easier to read.
-		2.	Implementing the Match-Map feature with no match in default.
-			1.	just start.
+Finished (RLtesterV3.2):
+		1.	Implementing the Match-Map feature with no match in default.	Done.
+		2.	Implementing the numpy skeleton for numba.cuda
+			1.	Import numpy and setup environment
+			2.	Convert program from regular array to numpy
+			3.	Test performance and fix bugs
+			4.	Generating 1000 long testing data
+		3.	Problem:
+			The bottleneck is not the cpu calculation for now. In fact, in most case, most of time is wasted in reading and writing data. Parallel calculation will cause longer time to dispatch data for each core and recieve data from them. So "parallel" for now is slower than single core "cpu". Haven't try cuda yet.

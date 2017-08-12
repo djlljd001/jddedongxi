@@ -23,21 +23,19 @@ def N_sa(s1s, a):
 #The main function that will return the reward R[s'] for Step 2 State
 #There is no data yet, so set to 0 first.
 def R_S(keyword, lens):
-
-	prodRZ = None
 	prodRZName = "Query/" + keyword + ".QLR"
 	try:
 		files = open(prodRZName, "r")
-		prodRZ = files.read().splitlines()
+		prodRZ = np.array(files.read().splitlines(), dtype=np.float32)
 		files.close()
 	except Exception, e:
 		print "DATA WARNING:	Failed in Finding/Reading in product Reward AT 33"
 
-	if prodRZ != None:
-		return [int(x) for x in prodRZ]
+	if prodRZ.size > 0:
+		return prodRZ
 	else:
 		print "WARNING:	No product reward data AT 38"
-		return [0]*lens
+		return np.array([0]*lens, dtype=np.float32)
 
 
 #this part will generate the initial value for Q. 
@@ -75,7 +73,7 @@ def purchaseModel(UserID, keyword, lens):
 			reward[x] = 8
 		else:
 			reward[x] = 20
-	return reward
+	return np.array(reward, dtype=np.float32)
 
 
 def clickModel(UserID, keyword, lens):
@@ -98,7 +96,6 @@ def clickModel(UserID, keyword, lens):
 		clkR = [0]*lens
 
 	minClick = min(clkR)
-	print "minClick: " , min(clkR)
 	newClick = [0]*len(clkR)
 	newClick[:] = [x - minClick for x in clkR]
 	maxClick = max(newClick)
@@ -118,7 +115,7 @@ def clickModel(UserID, keyword, lens):
 			reward[x] = 4
 		else:
 			reward[x] = 5
-	return reward
+	return np.array(reward, dtype=np.float32)
 
 
 def wishListModel(UserID, keyword, lens):
@@ -152,7 +149,7 @@ def wishListModel(UserID, keyword, lens):
 			reward[x] = 5
 		else:
 			reward[x] = 6
-	return reward
+	return np.array(reward, dtype=np.float32)
 
 
 #The R[s1s, a] function, which corresponding to the target customers, key words and products.
@@ -163,6 +160,11 @@ def wishListModel(UserID, keyword, lens):
 def GetReward(UserID, keyword, lens):
 	# with GPU, just do:
 	# return x + y + z + u
-	ret = [x+y+z+u for x,y,z,u in zip(purchaseModel(UserID, keyword, lens), clickModel(UserID, keyword, lens), wishListModel(UserID, keyword, lens), R_S(keyword, lens))]
+	X = purchaseModel(UserID, keyword, lens)
+	Y = clickModel(UserID, keyword, lens)
+	Z = wishListModel(UserID, keyword, lens)
+	U = R_S(keyword, lens)
+	ret = X + Y + Z + U
+	# ret = [x+y+z+u for x,y,z,u in zip(purchaseModel(UserID, keyword, lens), clickModel(UserID, keyword, lens), wishListModel(UserID, keyword, lens), R_S(keyword, lens))]
 	print "Final reward func: " , ret
 	return ret
