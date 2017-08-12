@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Author:    Jinglong Du
-# email:        jid020@ucsd.edu
-# if need gpu, then do this:
-# from numba import *
+# email:     jid020@ucsd.edu
 
 import numpy as np
 from numba import vectorize, float32, jit
@@ -13,7 +11,7 @@ import io
 def importTestingUserData(UserNameID):
     try:
         ret = []
-        filename = u"DispatchedData/UserDataJan/" + UserNameID
+        filename = u"DispatchedData/UserDataJune/" + UserNameID
         files = io.open(filename, "r" ,encoding='utf8')
         userData = files.read().splitlines()
         # split data here once to optimize program later
@@ -27,25 +25,32 @@ def importTestingUserData(UserNameID):
         return None
 
 def getTestPurchaseDict(userData):
-    # ( str(product sku), int purchase time)
-    PurchaseDict = []
-    # for line in userData:
-    #     splited = line.split("\t")
 
+    # [purchase sessionID, purchase sessionID, ...]
+    PurchaseDict = []
+    # [keyword/query: [splited, splited, splited, ...], keyword/query: [ splited, splited, splited, ...] ...]
+    returnDict = {}
+    PurchaseID = {}
+    # this part is for getting the potential query session id.
     for splited in userData:
-        # save purchase data
+        # save purchase data's session number.
         if splited[7] == "1":
-            PurchaseDict.append(splited)
-            # if PurchaseDict.has_key(splited[0] + splited[3]):
-            #     PurchaseDict[splited[0] + splited[3]] += int(splited[7])
-            # else:
-            #     PurchaseDict[splited[0] + splited[3]] = int(splited[7])
-    return PurchaseDict
+            PurchaseDict.append(splited[2])
+            PurchaseID[splited[2]] = splited
+    # this part is to get the useful query list for the potential purchase.
+    for splited in userData:
+        if splited[2] in PurchaseDict:
+            if returnDict.has_key(splited[2]):
+                returnDict[splited[2]].append( splited )
+            else:
+                returnDict[splited[2]] = [ splited ]
+    ret = [PurchaseID, returnDict]
+    return ret
 
 def importUserData(UserNameID):
     try:
         ret = []
-        filename = u"DispatchedData/UserDataJan/" + UserNameID
+        filename = u"DispatchedData/UserData1-5/" + UserNameID
         files = io.open(filename, "r" ,encoding='utf8')
         userData = files.read().splitlines()
         # split data here once to optimize program later
@@ -85,7 +90,7 @@ def importWLData(UserNameID):
 def importShoppingData(UserNameID):
     try:
         ret = {}
-        filename = u"DispatchedData/UserAddToCartJan/" + UserNameID
+        filename = u"DispatchedData/UserAddToCart1-5/" + UserNameID
         files = io.open(filename, "r" ,encoding='utf8')
         userData = files.read().splitlines()
         # split data here once to optimize program later
@@ -129,6 +134,20 @@ def getPurchaseDict(userData):
     return PurchaseDict
 
 
+def formataaaadata(UserNameID):
+    # (keyword : [ 10, 9, 8, 7...])
+    # Just try what's going on there.
+    # the temporary dictionary for that person for that kind of data.
+    global start_time
+
+    # list of (keyword, [])
+    userData = importTestingUserData(UserNameID)
+    # this is a list of session number that contains all the useful session number.
+    returnDict = getTestPurchaseDict(userData)
+
+    # return [NewQuery,QValue, RewardValue]
+    return returnDict
+
 def FormatQuery(userData):
     # (query/keyword, boolean): chech which query is useful
     UsefulQuery = {}
@@ -138,12 +157,13 @@ def FormatQuery(userData):
     for splited in userData:
         #save Useful query data
         if splited[6] == "1" or splited[7] == "1":
-            if UsefulQuery.has_key(splited[0]):
-                if UsefulQuery[splited[0]] >  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S'):
-                    UsefulQuery[splited[0]] = dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
-            else:
-                #   dt.strptime("10/12/13", "%m/%d/%y")   2017-03-12 09:48:44
-                UsefulQuery[splited[0]] =  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
+            if not UsefulQuery.has_key(splited[0]):
+                UsefulQuery[splited[0]] = True
+            #     if UsefulQuery[splited[0]] >  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S'):
+            #         UsefulQuery[splited[0]] = dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
+            # else:
+            #     #   dt.strptime("10/12/13", "%m/%d/%y")   2017-03-12 09:48:44
+            #     UsefulQuery[splited[0]] =  dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S')
 
     # save useful query's product list.
     # for line in userData:
@@ -155,23 +175,21 @@ def FormatQuery(userData):
             if NewQuery.has_key(splited[0]):
                 #if that query does not contains that product
                 if int(splited[3]) not in NewQuery[splited[0]]:
-
-
-                    #if that query's position is in the range.
-                    if int(splited[4]) <= len(NewQuery[splited[0]]):
-                        # if the new inserted products is in the most up to date query order, then
-                        if dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S') <= UsefulQuery[splited[0]]:
-                            # insert that products to the corresponding position into list that is newly
-                            # shown in the up-to-date query.
-                            NewQuery[splited[0]].insert(int(splited[4]) - 1, int(splited[3]))
-                        else:
-                            # append to the end of the products list
-                            NewQuery[splited[0]].append(int(splited[3]))
+                    NewQuery[splited[0]].append(int(splited[3]))
+                    # #if that query's position is in the range.
+                    # if int(splited[4]) <= len(NewQuery[splited[0]]):
+                    #     # if the new inserted products is in the most up to date query order, then
+                    #     if dt.strptime(splited[5], '%Y-%m-%d %H:%M:%S') <= UsefulQuery[splited[0]]:
+                    #         # insert that products to the corresponding position into list that is newly
+                    #         # shown in the up-to-date query.
+                    #         NewQuery[splited[0]].insert(int(splited[4]) - 1, int(splited[3]))
+                    #     else:
+                    #         # append to the end of the products list
+                    #         NewQuery[splited[0]].append(int(splited[3]))
                     # if it is out of range, i.e. it is the new added product for that query
-                    else:
-                        # append to the end of the products list
-                        NewQuery[splited[0]].append(int(splited[3]))
-
+                    # else:s
+                    #     # append to the end of the products list
+                    #     NewQuery[splited[0]].append(int(splited[3]))
             # if not have that query yet. Create new list for that query.
             else:
                 NewQuery[splited[0]] = [int(splited[3])]
