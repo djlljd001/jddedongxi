@@ -8,7 +8,6 @@ from numba import vectorize, float32, jit
 import time
 from datetime import datetime as dt
 import io
-
 def addDictTogether(DictOne, DictTwo):
     if DictOne is None:
         return DictTwo
@@ -86,6 +85,8 @@ def getTestPurchaseDict(userData):
             PurchaseDict.append(splited[2])
             PurchaseID[splited[2]] = splited
     # this part is to get the useful query list for the potential purchase.
+
+
     for splited in userData:
         if splited[2] in PurchaseDict:
             # if returnDict.has_key(splited[2]):
@@ -155,7 +156,7 @@ def importShoppingData(UserNameID, ShoppingCartTrainingPath):
 
 
 def getClickDict(userData):
-    # ( str(product sku), int => number of Click time)
+    # ( str(product sku), int ClickDict time)
     ClickDict = {}
     # for line in userData:
     #     splited = line.split("\t")
@@ -171,7 +172,7 @@ def getClickDict(userData):
 
 
 def getPurchaseDict(userData):
-    # ( str(product sku), int => number of purchase time)
+    # ( str(product sku), int purchase time)
     PurchaseDict = {}
     # for line in userData:
     #     splited = line.split("\t")
@@ -302,11 +303,12 @@ def purchaseModel(QueryList, PurchaseDict):
             purchR.append(PurchaseDict[str(each)])
         else:
             purchR .append(0)
-
     reward = [0]*len(QueryList)
     for x in xrange(len(QueryList)):
-        if purchR[x] <= 1:
-            reward[x] = 1
+        if purchR[x] <= 0:
+            reward[x] = 0
+        elif purchR[x] <= 1:
+            reward[x] = 0
         elif purchR[x] <= 2:
             reward[x] = 2
         elif purchR[x] <= 4:
@@ -327,7 +329,10 @@ def clickModel(QueryList, ClickDict):
             clkR.append(ClickDict[str(each)])
         else:
             clkR .append(0.0)
-    maxClick = float(max(clkR))
+    minClick = min(clkR)
+    newClick = [0]*len(clkR)
+    newClick[:] = [x - minClick for x in clkR]
+    maxClick = float(max(newClick))
     reward = [0]*len(clkR)
     for x in xrange(len(clkR)):
         if clkR[x] <= 0:
@@ -420,6 +425,8 @@ def GetReward(QueryList, ClickDict, PurchaseDict, WishListDict, ShoppingCartDict
 # def addTogether(X, Y, Z, U):
 #   return X + Y + Z + U
 # @vectorize()
-@vectorize(['float32(float32, float32, float32, float32, float32)'], target='parallel')
+@vectorize(['float32(float32, float32, float32, float32, float32)'], target='cpu')
 def addTogether(X, Y, Z, U, V):
     return X + Y + Z + U + V
+
+

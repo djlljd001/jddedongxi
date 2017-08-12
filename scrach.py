@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Author:	Jinglong Du
-# email:		jid020@ucsd.edu
+# email:	jid020@ucsd.edu
 
 # Way to use base64:
 # file_name_string = base64.urlsafe_b64encode("***$^%^(&&^$%&%*^(&*^?<>{}:>?<***")
@@ -15,8 +15,6 @@ from reward import *
 import numpy as np
 from numba import vectorize, float32, jit
 import time
-import sys
-import cPickle
 import base64
 from datetime import datetime as dt
 import os
@@ -24,14 +22,15 @@ from auc2 import *
 
 wlmiss = 0
 shpmiss = 0
-GAMA = 0.2
-scale = 10
-QueryEmulator = False
+GAMA = 0.9
+scale = 1.0
+QueryEmulator = True
 
 ImprovePosition = 0
 DropDownPosition = 0
 ImprovePositionPercentage = 0.
 DropDownPositionPercentage = 0.
+totalPurchase = 0
 
 # best for now: 0.2 13/1
 #   0.15  9/1
@@ -47,6 +46,7 @@ DropDownPositionPercentage = 0.
 #   QValue:     [keyword: [float32 Q, float32 Q...],  keyword:  [float32 Q, float32 Q...], ... ]
 #   RewardValue:[keyword: [float32 R, float32 R...],  keyword:  [float32 R, float32 R...], ... ]
 
+
 @vectorize([float32(float32, float32)], target='cpu')
 def CoreFunc(r, q):
     # return q + Decay(DecayRate, N_sa(0, 0)) * GAMA * (r - q)
@@ -57,10 +57,6 @@ def CoreFunc(r, q):
 def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTrainingPath, TotalDict):
     global start_time
     global accTime
-    # TotalDict[0] = accumulativeClickDict
-    # TotalDict[1] = accumulativePurchaseDict
-    # TotalDict[2] = accumulativeShoppingCartDict
-    # TotalDict[3] = accumulativeWishlistDict
 
     # list of (keyword, [])
     userData = importUserData(UserNameID, path)
@@ -98,7 +94,6 @@ def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTr
         # print "."
         TotalDict[0][UserNameID] = ClickDict
 
-    # (productSKU, number)
     PurchaseDict = getPurchaseDict(userData)
     if UserNameID in TotalDict[1]:
         TotalDict[1][UserNameID] = addDictTogether(TotalDict[1][UserNameID], PurchaseDict)
@@ -109,6 +104,7 @@ def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTr
     # (keyword, [sku, sku, sku ...])
     NewQuery = FormatQuery(userData)
     # print "lens of NewQuery:" , len(NewQuery)
+    # about 20 seconds
 
     newData = {}
     for each in NewQuery.items():
@@ -131,7 +127,6 @@ def formatdata(UserNameID, existdata, path, ShoppingCartTrainingPath, WishlistTr
 def buildModel(total, path, ShoppingCartTrainingPath, WishlistTrainingPath, Iteration, TotalDict):
     global wlmiss
     global shpmiss
-
     # ============================================================================================
     # init path for Basic info and query and click and purchase data.
     # path = 'DispatchedData/UserData1-5/'
@@ -233,9 +228,11 @@ def getTestData(total, TotalResult, path, TotalDict):
         # each[1] is the ret for this user that need to be tested.
         #       each [1][0] is the purchaseID
         #       each [1][1] is the returnDict
+        global totalPurchase
+        totalPurchase += len(each[1][1])
 
         # if there is more than one in returnDict, which means there is purchase
-        if len(each[1][1].items()) > 1:
+        if len(each[1][1].items()) >= 1:
             # print len(each[1].items())
 
             # for each purchases for one user
@@ -262,12 +259,14 @@ def getTestData(total, TotalResult, path, TotalDict):
                 # TempData represents:
                     # Data[Query/keywords] = [ [sku list], [Initial Q-Value], [Reward List] ]
                 # if has corresponding user
-                if TempData is not None:
 
+                if True:
+                # if TempData is not None:
                     # print SinglePurchaseQuery, " == ", SinglePurchase[0]
                     # if has corresponding query
                     # if TempData.has_key(SinglePurchaseQuery):
-                    if SinglePurchaseQuery in TempData:
+                    if False:
+                    # if SinglePurchaseQuery in TempData:
 
                         # ModelDataList = [ [sku list], [Initial Q-Value], [Reward List] ]
                         ModelDataList = TempData[SinglePurchaseQuery]
@@ -290,9 +289,9 @@ def getTestData(total, TotalResult, path, TotalDict):
                         SinglePurchasedProductID = int(purchaseID[SinglePurchase[0]][3])
                         # match with the correspond model products.
                         productIDPosition = None
-                        for eaches in xrange(len(SinglePurchase[1])):
-                            if SinglePurchasedProductID == int(SinglePurchase[1][eaches][3]):
-                                productIDPosition = eaches
+                        for each in xrange(len(SinglePurchase[1])):
+                            if SinglePurchasedProductID == int(SinglePurchase[1][each][3]):
+                                productIDPosition = each
                                 # oldPos = SinglePurchase[1][each][5]
                                 # print SinglePurchase[1][each][4] , "==", each +1
                                 break
@@ -307,7 +306,6 @@ def getTestData(total, TotalResult, path, TotalDict):
                         # print QValue
                         newProductPosition = list(QValue).index(TargetQValue)
 
-
                         if newProductPosition < productIDPosition:
                             ImprovePosition += productIDPosition - newProductPosition
                             # ImprovePositionPercentage += float(productIDPosition - newProductPosition)\
@@ -318,7 +316,7 @@ def getTestData(total, TotalResult, path, TotalDict):
                                            " || productID: " + str(SinglePurchasedProductID) +
                                            " || Query: " + SinglePurchaseQuery)
                             # AUC2 = [old position, new position, product ID, Query, Query Length]
-                            AUC2.append([int(productIDPosition + 1),int(newProductPosition + 1),
+                            AUC2.append([int(productIDPosition + 1), int(newProductPosition + 1),
                                          str(SinglePurchasedProductID), SinglePurchaseQuery, len(QValue)])
 
                         elif newProductPosition > productIDPosition:
@@ -342,7 +340,6 @@ def getTestData(total, TotalResult, path, TotalDict):
                     else:
                         # not found query for this user.
                         notFound = notFound + 1
-
                         # use emulator?
                         if QueryEmulator:
                             # print "Emulator start......................................................"
@@ -396,20 +393,25 @@ def getTestData(total, TotalResult, path, TotalDict):
                             RewardEmulator = GetReward(skuList, ClickDict, PurchaseDict,
                                                        WishlistDict, ShoppingCartDict)
                             # print RewardEmulator
-                            if len(QValue) == len( RewardEmulator):
-                                QValue = QValue + RewardEmulator
+                            if len(QValue) == len(RewardEmulator):
+
+                                # QValue = QValue + RewardEmulator
+                                QValue = CoreFunc( RewardEmulator,QValue)
                             else:
-                                QValue = QValue[:len(RewardEmulator)] + RewardEmulator
+                                QValue = CoreFunc( RewardEmulator, QValue[:len(RewardEmulator)])
+                              # QValue = QValue[:len(RewardEmulator)] + RewardEmulator
+
 
                             SinglePurchasedProductID = int(purchaseID[SinglePurchase[0]][3])
                             # match with the correspond model products.
                             productIDPosition = None
-                            for each in xrange(len(SinglePurchase[1])):
-                                if SinglePurchasedProductID == int(SinglePurchase[1][each][3]):
-                                    productIDPosition = each
+                            for eaches in xrange(len(SinglePurchase[1])):
+                                if SinglePurchasedProductID == int(SinglePurchase[1][eaches][3]):
+                                    productIDPosition = eaches
                                     # oldPos = SinglePurchase[1][each][5]
                                     # print SinglePurchase[1][each][4] , "==", each +1
                                     break
+                            QValue = list(QValue)
                             TargetQValue = QValue[productIDPosition]
 
                             # print "======================================================="
@@ -453,9 +455,6 @@ def getTestData(total, TotalResult, path, TotalDict):
                                                 " || productID: " + str(SinglePurchasedProductID) +
                                                 " || Query: " + SinglePurchaseQuery)
 
-
-
-
     # print "Finished current test."
     # print "=========================================================="
     # print " improve  :", len(improve)
@@ -483,8 +482,6 @@ def getTestData(total, TotalResult, path, TotalDict):
 # ================ Start the func ==========================
 # ==========================================================
 total = {}
-
-# accumulativePurchaseDict[ userID ]
 # accumulativeClickDict = {}
 # accumulativePurchaseDict = {}
 # accumulativeShoppingCartDict = {}
@@ -492,56 +489,54 @@ total = {}
 
 # TotalDict = [accumulativeClickDict, accumulativePurchaseDict, accumulativeShoppingCartDict, accumulativeWishlistDict]
 TotalDict = [{}, {}, {}, {}]
-# result = [improve, dropdown, noChange, AUC]
+# result = [improve, dropdown, noChange]
 TotalResult = [[], [], [], []]
 
-
-TrainingPath = 'DispatchedData/UserDataJan/'
-ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
-WishlistTrainingPath = "DispatchedData/UserFollowJan/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
-
-TestingPath = 'DispatchedData/UserDataFeb/'
-TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
-
-TrainingPath = 'DispatchedData/UserDataFeb/'
-ShoppingCartTrainingPath = "DispatchedData/UserAddToCartFeb/"
-WishlistTrainingPath = "DispatchedData/UserFollowFeb/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
-
-TestingPath = 'DispatchedData/UserDataMar/'
-TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
-
-TrainingPath = 'DispatchedData/UserDataMar/'
-ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMar/"
-WishlistTrainingPath = "DispatchedData/UserFollowMar/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
-
-TestingPath = 'DispatchedData/UserDataApr/'
-TotalResult = getTestData(total, TotalResult, TestingPath,TotalDict)
-
-TrainingPath = 'DispatchedData/UserDataApr/'
-ShoppingCartTrainingPath = "DispatchedData/UserAddToCartApr/"
-WishlistTrainingPath = "DispatchedData/UserFollowApr/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
-
-TestingPath = 'DispatchedData/UserDataMay/'
-TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
-
-TrainingPath = 'DispatchedData/UserDataMay/'
-ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMay/"
-WishlistTrainingPath = "DispatchedData/UserFollowMay/"
-total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
-
-TestingPath = 'DispatchedData/UserDataJune/'
-TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+# TrainingPath = 'DispatchedData/UserDataJan/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
+# WishlistTrainingPath = "DispatchedData/UserFollowJan/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
+#
+# TestingPath = 'DispatchedData/UserDataFeb/'
+# TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+#
+# TrainingPath = 'DispatchedData/UserDataFeb/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartFeb/"
+# WishlistTrainingPath = "DispatchedData/UserFollowFeb/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
+#
+# TestingPath = 'DispatchedData/UserDataMar/'
+# TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+#
+# TrainingPath = 'DispatchedData/UserDataMar/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMar/"
+# WishlistTrainingPath = "DispatchedData/UserFollowMar/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
+#
+# TestingPath = 'DispatchedData/UserDataApr/'
+# TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+#
+# TrainingPath = 'DispatchedData/UserDataApr/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartApr/"
+# WishlistTrainingPath = "DispatchedData/UserFollowApr/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
+#
+# TestingPath = 'DispatchedData/UserDataMay/'
+# TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+#
+# TrainingPath = 'DispatchedData/UserDataMay/'
+# ShoppingCartTrainingPath = "DispatchedData/UserAddToCartMay/"
+# WishlistTrainingPath = "DispatchedData/UserFollowMay/"
+# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True, TotalDict)
+#
+# TestingPath = 'DispatchedData/UserDataJune/'
+# TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
 
 # TrainingPath = 'DispatchedData/UserDataJan/'
 # ShoppingCartTrainingPath = "DispatchedData/UserAddToCartJan/"
 # WishlistTrainingPath = "DispatchedData/UserFollowJan/"
 # total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, True)
-#
-# TestingPath = 'DispatchedData/UserDataFeb/'
+# Path = 'DispatchedData/UserDataFeb/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
 #
 # TrainingPath = 'DispatchedData/UserDataJan+Feb/'
@@ -576,105 +571,106 @@ TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
 # TestingPath = 'DispatchedData/UserDataJune/'
 # TotalResult = getTestData(total, TotalResult, TestingPath)
 
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-#     TestingPath = 'NewDispatchedData/UserDataJan/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-# TestingPath = 'NewDispatchedData/UserDataFeb/' + str(1) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#     TestingPath = 'NewDispatchedData/UserDataFeb/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(31) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-# TestingPath = 'NewDispatchedData/UserDataMar/' + str(1) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataMar/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#     TestingPath = 'NewDispatchedData/UserDataMar/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-#
-# TrainingPath = 'NewDispatchedData/UserDataMar/' + str(31) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-# TestingPath = 'NewDispatchedData/UserDataApr/' + str(1) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataApr/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-#     TestingPath = 'NewDispatchedData/UserDataApr/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# TrainingPath = 'NewDispatchedData/UserDataApr/' + str(31) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-# TestingPath = 'NewDispatchedData/UserDataMay/' + str(1) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataMay/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#     TestingPath = 'NewDispatchedData/UserDataMay/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-#
-# TrainingPath = 'NewDispatchedData/UserDataMay/' + str(31) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-# TestingPath = 'NewDispatchedData/UserDataJune/' + str(1) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# for x in xrange(30):
-#     TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
-#     ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1) + "/"
-#     WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1) + "/"
-#     total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-#     TestingPath = 'NewDispatchedData/UserDataJune/' + str(x+2) + "/"
-#     TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
-#
-# TrainingPath = 'NewDispatchedData/UserDataJune/' + str(30) + "/"
-# ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(31) + "/"
-# WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(31) + "/"
-# total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath,  True, TotalDict)
-#
-# TestingPath = 'NewDispatchedData/UserDataJune/' + str(31) + "/"
-# TotalResult = getTestData(total, TotalResult,  TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataJan/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+    TestingPath = 'NewDispatchedData/UserDataJan/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+TrainingPath = 'NewDispatchedData/UserDataJan/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJan/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowJan/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+    TestingPath = 'NewDispatchedData/UserDataFeb/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+TrainingPath = 'NewDispatchedData/UserDataFeb/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartFeb/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowFeb/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+TestingPath = 'NewDispatchedData/UserDataMar/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataMar/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+    TestingPath = 'NewDispatchedData/UserDataMar/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+
+TrainingPath = 'NewDispatchedData/UserDataMar/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMar/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowMar/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+TestingPath = 'NewDispatchedData/UserDataApr/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataApr/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+    TestingPath = 'NewDispatchedData/UserDataApr/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+TrainingPath = 'NewDispatchedData/UserDataApr/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartApr/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowApr/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+TestingPath = 'NewDispatchedData/UserDataMay/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataMay/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+    TestingPath = 'NewDispatchedData/UserDataMay/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+
+TrainingPath = 'NewDispatchedData/UserDataMay/' + str(31) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartMay/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowMay/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+TestingPath = 'NewDispatchedData/UserDataJune/'+ str(1)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+for x in xrange(30):
+    TrainingPath = 'NewDispatchedData/UserDataJune/' + str(x+1) + "/"
+    ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(x+1)+ "/"
+    WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(x+1)+ "/"
+    total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+    TestingPath = 'NewDispatchedData/UserDataJune/'+ str(x+2)+ "/"
+    TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
+
+TrainingPath = 'NewDispatchedData/UserDataJune/' + str(30) + "/"
+ShoppingCartTrainingPath = "NewDispatchedData/UserAddToCartJune/" + str(31)+ "/"
+WishlistTrainingPath = "NewDispatchedData/UserFollowJune/" + str(31)+ "/"
+total = buildModel(total, TrainingPath, ShoppingCartTrainingPath, WishlistTrainingPath, False, TotalDict)
+
+TestingPath = 'NewDispatchedData/UserDataJune/'+ str(31)+ "/"
+TotalResult = getTestData(total, TotalResult, TestingPath, TotalDict)
 
 print "=========================================================="
 print "================ The Final Result ========================"
@@ -682,23 +678,21 @@ print "=========================================================="
 # print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
 #     ", Average: ", float(ImprovePosition)/len(TotalResult[0]), \
 #     ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
-
 for each in TotalResult[0]:
     print each
 print "=========================================================="
 # print "Dropdown :", len(TotalResult[1]),"; Dropdown position: ", DropDownPosition, \
 #     ", Average: ", float(DropDownPosition)/len(TotalResult[1]), \
 #     ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
-
-for each in TotalResult[1]:
-    print each
+# for each in TotalResult[1]:
+#     print each
 print "=========================================================="
 print "Improve  :", len(TotalResult[0]), "; Improve position: ", ImprovePosition, \
     ", Average: ", float(ImprovePosition)/len(TotalResult[0])
-#   ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
+    # ", Improve percentage: ", ImprovePositionPercentage/len(TotalResult[0])
 print "Dropdown :", len(TotalResult[1]), "; Dropdown position: ", DropDownPosition, \
     ", Average: ", float(DropDownPosition)/len(TotalResult[1])
-#   ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
+    # ", Dropdown percentage: ", DropDownPositionPercentage/len(TotalResult[1])
 print "No Change :", len(TotalResult[2])
 print "GAMA: ", GAMA
 
@@ -717,9 +711,9 @@ print "average based on : AUC2@1, @2, @3, @4, @5, @6, @10, @20, @40, @all"
 OldAverageTotal = 0.0
 NewAverageTotal = 0.0
 
-# AUC2@ =    [@1, @2, @3, @4, @5, @6, @10, @20, @40, @all]
-oldAUC2at =  [[], [], [], [], [], [],  [],  [],  [], []]
-newAUC2at =  [[], [], [], [], [], [],  [],  [],  [], []]
+# AUC2@ =    [ @1, @2, @3, @4, @5, @6, @10, @20, @40, @all]
+oldAUC2at =  [ [], [], [], [], [], [],  [],  [],  [],   []]
+newAUC2at =  [ [], [], [], [], [], [],  [],  [],  [],   []]
 
 
 for each in TotalResult[3]:
@@ -735,23 +729,31 @@ for each in TotalResult[3]:
     #     str(each[1]), "|| product ID: ", str(each[2]), "|| Query: ", \
     #     each[3], "|| Query Lenth: ", str(each[4])
 
-    positionlist = [1, 2, 3, 4, 5, 6, 10, 20, 40, "all"]
-    for x in xrange(len(retAUC[0]) - 1):
+    positionlist = [1,2,3,4,5,6,10,20,40,"all"]
+    for x in xrange(len(retAUC[0]) -1):
         oldAUC2at[x].append(retAUC[0][x])
         newAUC2at[x].append(retAUC[1][x])
         # print "old AUC @" ,positionlist[x],": ", retAUC[0][x], "new AUC @" ,positionlist[x],": ", retAUC[1][x]
 
-    oldAUC2at[len(positionlist) - 1].append(retAUC[0][len(retAUC[0]) - 1])
+    oldAUC2at[len(positionlist) -1].append(retAUC[0][len(retAUC[0]) -1])
     newAUC2at[len(positionlist) - 1].append(retAUC[1][len(retAUC[1]) - 1])
     # print "old AUC @", positionlist[len(positionlist) -1], ": ", retAUC[0][len(retAUC[0]) -1], "new AUC @", \
     #         positionlist[len(positionlist) -1], ": ", retAUC[1][len(retAUC[1]) -1]
 
 print "=========================================================="
 print "Average AUC2 comparision"
-positionlist = [1,2,3,4,5,6,10,20,40,"all"]
+positionlist = [1, 2, 3, 4, 5, 6, 10, 20, 40, "all"]
+overallDiff = 0.0
 for x in xrange(10):
-    print "old AUC @", positionlist[x],": ", sum(oldAUC2at[x])/len(oldAUC2at[x]), "new AUC @" ,positionlist[x],": ", \
-            sum(newAUC2at[x])/len(newAUC2at[x])
+    new = sum(newAUC2at[x])/len(newAUC2at[x])
+    old = sum(oldAUC2at[x])/len(oldAUC2at[x])
+    Diff = (new - old)/(old)
+    print "old AUC @" ,positionlist[x],": ",old, "|| new AUC @" ,positionlist[x],": ", new , "|| RP: ", Diff*100 , "%"
+    overallDiff += Diff
+
+print "Average RP :", overallDiff*10 , "%"
+
+print "totalPurchase:" , totalPurchase
 
 # print "Average old AUC2:        ", OldAverageTotal/len(TotalResult[3])
 # print "Average new AUC2:        ", NewAverageTotal/len(TotalResult[3])
